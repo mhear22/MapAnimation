@@ -1,0 +1,114 @@
+{
+  "defaults": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationSeconds": 8,
+    "startZoom": 15.8,
+    "endZoom": 15.8,
+    "overviewPadding": 180,
+    "cameraSmoothing": 0.92,
+    "mapType": "satellite",
+    "mode": "walking"
+  },
+  "routes": [
+    {
+      "id": "mcec-to-cbd",
+      "mapType": "satellite",
+      "mode": "walking",
+      "start": {
+        "label": "Melbourne Convention Centre",
+        "query": "Melbourne Convention and Exhibition Centre, South Wharf VIC 3006, Australia",
+        "coords": [
+          144.95175,
+          -37.82546
+        ]
+      },
+      "end": {
+        "label": "Melbourne CBD",
+        "query": "Melbourne CBD VIC 3000, Australia",
+        "coords": [
+          144.9631,
+          -37.8136
+        ]
+      },
+      "output": "output/mcec-to-cbd.mp4"
+    },
+    {
+      "id": "flinders-to-qvm",
+      "mapType": "standard",
+      "mode": "walking",
+      "start": {
+        "label": "Flinders Street Station",
+        "query": "Flinders Street Railway Station, Melbourne VIC 3000, Australia"
+      },
+      "end": {
+        "label": "Queen Victoria Market",
+        "query": "Queen Victoria Market, Melbourne VIC 3000, Australia"
+      },
+      "output": "output/flinders-to-qvm.mp4"
+    },
+    {
+      "id": "glen-waverley-to-cbd",
+      "mapType": "satellite",
+      "mode": "driving",
+      "start": {
+        "label": "Glen Waverley",
+        "query": "Glen Waverley VIC 3150, Australia"
+      },
+      "end": {
+        "label": "Melbourne CBD",
+        "query": "Melbourne CBD VIC 3000, Australia",
+        "coords": [
+          144.9631,
+          -37.8136
+        ]
+      },
+      "output": "output/glen-waverley-to-cbd.mp4"
+    },
+    {
+      "id": "weston-st-to-airport",
+      "mapType": "satellite",
+      "mode": "driving",
+      "start": {
+        "label": "27 Weston St, Brunswick",
+        "query": "27 Weston St, Brunswick VIC 3056, Australia"
+      },
+      "end": {
+        "label": "Melbourne Airport",
+        "query": "Melbourne Airport VIC 3045, Australia"
+      },
+      "output": "output/weston-st-to-airport.mp4"
+    },
+    {
+      "id": "melbourne-airport-to-sydney-airport",
+      "mapType": "satellite",
+      "mode": "flying",
+      "durationSeconds": 8,
+      "start": {
+        "label": "Melbourne Airport",
+        "query": "Melbourne Airport VIC 3045, Australia"
+      },
+      "end": {
+        "label": "Sydney Airport",
+        "query": "Sydney Airport NSW 2020, Australia"
+      },
+      "output": "output/melbourne-airport-to-sydney-airport.mp4"
+    },
+    {
+      "id": "sydney-airport-to-brisbane-airport",
+      "mapType": "satellite",
+      "mode": "flying",
+      "durationSeconds": 8,
+      "start": {
+        "label": "Sydney Airport",
+        "query": "Sydney Airport NSW 2020, Australia"
+      },
+      "end": {
+        "label": "Brisbane Airport",
+        "query": "Brisbane Airport QLD 4008, Australia"
+      },
+      "output": "output/sydney-airport-to-brisbane-airport.mp4"
+    }
+  ]
+}

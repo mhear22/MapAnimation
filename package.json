@@ -1,0 +1,24 @@
+{
+  "name": "mapanim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install:browsers": "playwright install chromium",
+    "build:webapp": "vite build",
+    "dev:webapp": "vite",
+    "webapp": "npm run build:webapp && node server/index.js",
+    "render": "node scripts/render.js --config ./routes.json",
+    "render:route": "node scripts/render.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "maplibre-gl": "^5.3.0",
+    "playwright": "^1.54.2",
+    "vue": "^3.5.22"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "vite": "^7.1.12"
+  }
+}

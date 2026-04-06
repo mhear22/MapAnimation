@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MapAnim Render Surface</title>
+    <link rel="stylesheet" href="/node_modules/maplibre-gl/dist/maplibre-gl.css" />
+    <style>
+      html,
+      body,
+      #map {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #d6ddd8;
+      }
+
+      body {
+        font-family: "Avenir Next", "Helvetica Neue", Helvetica, sans-serif;
+      }
+
+      .route-label {
+        background: rgba(19, 30, 27, 0.92);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 10px;
+        box-shadow: 0 10px 24px rgba(10, 17, 15, 0.18);
+        color: #fff;
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        padding: 10px 14px;
+        white-space: nowrap;
+      }
+
+      .route-label.end {
+        background: rgba(92, 69, 24, 0.94);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script src="/node_modules/maplibre-gl/dist/maplibre-gl.js"></script>
+    <script type="module" src="./renderer.js"></script>
+  </body>
+</html>
