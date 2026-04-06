@@ -442,10 +442,6 @@ onBeforeUnmount(() => {
               <span class="field-label">Route name</span>
               <input v-model="route.name" class="text-input" placeholder="e.g. Airport hop" />
             </label>
-            <label class="field">
-              <span class="field-label">Output file</span>
-              <input v-model="route.output" class="text-input" placeholder="output/custom.mp4" />
-            </label>
           </div>
         </div>
 
