@@ -6,6 +6,7 @@
 
 # Generated renders and local presets
 /output/
+/.tmp/
 /presets/*.json
 
 # Logs
