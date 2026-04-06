@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import CurveEditor from "./components/CurveEditor.vue";
 import TimingCurveEditor from "./components/TimingCurveEditor.vue";
 import RenderPreview from "./components/RenderPreview.vue";
@@ -62,6 +62,10 @@ const previewProgress = ref(0);
 const previewError = ref("");
 const previewLoading = ref(false);
 const presetName = ref("");
+const saveModalOpen = ref(false);
+const saveModalName = ref("");
+const loadModalOpen = ref(false);
+const resetModalOpen = ref(false);
 const presets = ref([]);
 const jobs = ref([]);
 const searchState = reactive({
@@ -72,7 +76,6 @@ const searchState = reactive({
 });
 const sidebarOpen = ref(false);
 const queueOpen = ref(false);
-const showPresets = ref(false);
 const infoOpen = ref(false);
 const darkMode = ref(localStorage.getItem("theme") !== "light");
 
@@ -191,15 +194,26 @@ function applyRoute(nextRoute) {
   });
 }
 
-async function savePreset() {
+function openSaveModal() {
+  saveModalName.value = presetName.value || route.name || "";
+  saveModalOpen.value = true;
+  nextTick(() => {
+    const input = document.querySelector(".modal .text-input");
+    if (input) input.focus();
+  });
+}
+
+async function confirmSave() {
+  const name = saveModalName.value.trim() || route.name || "Route preset";
   const payload = await requestJson("/api/presets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: presetName.value || route.name || "Route preset", route: JSON.parse(JSON.stringify(route)) })
+    body: JSON.stringify({ name, route: JSON.parse(JSON.stringify(route)) })
   });
   presetName.value = payload.name;
   route.id = payload.route.id;
   route.name = payload.route.name ?? route.name;
+  saveModalOpen.value = false;
   await loadPresets();
 }
 
@@ -209,7 +223,7 @@ async function loadPreset(id) {
   presetName.value = payload.name ?? payload.route.name ?? "";
   previewProgress.value = 0;
   schedulePreview(0);
-  showPresets.value = false;
+  loadModalOpen.value = false;
 }
 
 async function queueRender() {
@@ -231,6 +245,11 @@ function resetRoute() {
   searchState.endResults = [];
   searchState.startLoading = false;
   searchState.endLoading = false;
+}
+
+function confirmReset() {
+  resetRoute();
+  resetModalOpen.value = false;
 }
 
 function applySearchResult(kind, result) {
@@ -544,34 +563,16 @@ onBeforeUnmount(() => {
 
       <!-- Persistent bottom panel -->
       <div class="sidebar-panel">
-        <div v-if="showPresets" class="sidebar-panel-presets">
-          <div v-if="!presets.length" class="field-hint">No presets saved yet.</div>
-          <button
-            v-for="preset in presets"
-            :key="preset.id"
-            class="preset-item"
-            type="button"
-            @click="loadPreset(preset.id)"
-          >
-            <span>{{ preset.name }}</span>
-            <span class="preset-source">{{ preset.source }}</span>
-          </button>
-        </div>
-        <label class="field" style="margin-bottom:6px;">
-          <span class="field-label">Preset name</span>
-          <input v-model="presetName" class="text-input" placeholder="Reusable preset name" />
-        </label>
         <div class="sidebar-panel-actions">
           <button type="button" class="btn btn-primary sidebar-panel-btn" :disabled="!canQueueRender" @click="queueRender">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3" /></svg>
             Queue
           </button>
-          <button type="button" class="btn sidebar-panel-btn" @click="savePreset">Save</button>
-          <button type="button" class="btn sidebar-panel-btn" :class="{ active: showPresets }" @click="showPresets = !showPresets">
-            Load
-            <span v-if="presets.length" class="preset-count-badge">{{ presets.length }}</span>
+          <button type="button" class="btn sidebar-panel-btn" @click="openSaveModal">Save</button>
+          <button type="button" class="btn sidebar-panel-btn" @click="loadModalOpen = true">Load</button>
+          <button type="button" class="btn btn-danger sidebar-panel-btn" @click="resetModalOpen = true" title="Reset route">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 102.13-9.36L1 10" /></svg>
           </button>
-          <button type="button" class="btn btn-danger sidebar-panel-btn" @click="resetRoute">Reset</button>
         </div>
       </div>
     </aside>
@@ -625,5 +626,64 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </main>
+
+    <!-- Save Preset Modal -->
+    <Teleport to="body">
+      <div v-if="saveModalOpen" class="modal-backdrop" @click.self="saveModalOpen = false">
+        <div class="modal">
+          <h3 class="modal-title">Save Preset</h3>
+          <label class="field">
+            <span class="field-label">Preset name</span>
+            <input
+              ref="saveModalInput"
+              v-model="saveModalName"
+              class="text-input"
+              placeholder="e.g. Airport hop"
+              @keydown.enter="confirmSave"
+              @keydown.escape="saveModalOpen = false"
+            />
+          </label>
+          <div class="modal-actions">
+            <button type="button" class="btn" @click="saveModalOpen = false">Cancel</button>
+            <button type="button" class="btn btn-primary" @click="confirmSave">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Load Preset Modal -->
+      <div v-if="loadModalOpen" class="modal-backdrop" @click.self="loadModalOpen = false">
+        <div class="modal">
+          <h3 class="modal-title">Load Preset</h3>
+          <div v-if="!presets.length" class="field-hint" style="padding:8px 0;">No presets saved yet.</div>
+          <div v-else class="modal-preset-list">
+            <button
+              v-for="preset in presets"
+              :key="preset.id"
+              class="preset-item"
+              type="button"
+              @click="loadPreset(preset.id)"
+            >
+              <span>{{ preset.name }}</span>
+              <span class="preset-source">{{ preset.source }}</span>
+            </button>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn" @click="loadModalOpen = false">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reset Confirmation Modal -->
+      <div v-if="resetModalOpen" class="modal-backdrop" @click.self="resetModalOpen = false">
+        <div class="modal">
+          <h3 class="modal-title">Reset Route</h3>
+          <p style="font-size:13px;color:var(--text-secondary);">This will clear all route fields and return to defaults. Are you sure?</p>
+          <div class="modal-actions">
+            <button type="button" class="btn" @click="resetModalOpen = false">Cancel</button>
+            <button type="button" class="btn btn-danger" @click="confirmReset">Reset</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
