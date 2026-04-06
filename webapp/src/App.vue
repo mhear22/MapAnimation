@@ -70,6 +70,11 @@ const searchState = reactive({
 });
 const sidebarOpen = ref(false);
 
+const playing = ref(false);
+let playRaf = 0;
+let playStart = 0;
+let playFrom = 0;
+
 let events = null;
 let startSearchTimer = 0;
 let endSearchTimer = 0;
@@ -105,6 +110,37 @@ const previewStatus = computed(() => {
 });
 
 const previewDistance = computed(() => distanceLabel(previewRoute.value));
+
+function stopPlayback() {
+  playing.value = false;
+  cancelAnimationFrame(playRaf);
+  playRaf = 0;
+}
+
+function tickAnimation(timestamp) {
+  if (!playing.value) return;
+  const elapsed = (timestamp - playStart) / 1000;
+  const duration = route.durationSeconds || 8;
+  const progress = Math.min(playFrom + elapsed / duration, 1);
+  previewProgress.value = progress;
+  if (progress >= 1) {
+    stopPlayback();
+    return;
+  }
+  playRaf = requestAnimationFrame(tickAnimation);
+}
+
+function togglePlay() {
+  if (playing.value) {
+    stopPlayback();
+  } else {
+    if (previewProgress.value >= 1) previewProgress.value = 0;
+    playFrom = previewProgress.value;
+    playStart = performance.now();
+    playing.value = true;
+    playRaf = requestAnimationFrame(tickAnimation);
+  }
+}
 
 function toggleSidebar() {
   sidebarOpen.value = !sidebarOpen.value;
@@ -260,6 +296,7 @@ onBeforeUnmount(() => {
   window.clearTimeout(startSearchTimer);
   window.clearTimeout(endSearchTimer);
   window.clearTimeout(previewTimer);
+  cancelAnimationFrame(playRaf);
   events?.close();
 });
 </script>
@@ -471,8 +508,20 @@ onBeforeUnmount(() => {
         <div class="preview-footer">
           <div v-if="previewLocationLabel" class="preview-caption">{{ previewLocationLabel }}</div>
           <div class="timeline">
-            <label>Timeline</label>
-            <input v-model.number="previewProgress" type="range" min="0" max="1" step="0.01" />
+            <div class="timeline-meta">
+              <label for="preview-progress">Timeline</label>
+              <button
+                class="btn btn-sm play-btn"
+                :disabled="!previewRoute"
+                :title="playing ? 'Pause' : 'Play'"
+                :aria-label="playing ? 'Pause preview playback' : 'Play preview playback'"
+                @click="togglePlay"
+              >
+                <svg v-if="!playing" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 3 20 12 6 21 6 3" /></svg>
+                <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="3" width="4" height="18" /><rect x="15" y="3" width="4" height="18" /></svg>
+              </button>
+            </div>
+            <input id="preview-progress" v-model.number="previewProgress" type="range" min="0" max="1" step="0.01" @input="stopPlayback" />
             <strong>{{ Math.round(previewProgress * 100) }}%</strong>
           </div>
         </div>
