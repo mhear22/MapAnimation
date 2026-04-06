@@ -381,7 +381,8 @@ a:hover {
 
 /* ─── Curve Editor ─────────────────────────────────────── */
 
-.curve-editor {
+.curve-editor,
+.timing-editor {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -415,6 +416,34 @@ a:hover {
   font-weight: 600;
   color: var(--text);
   font-variant-numeric: tabular-nums;
+}
+
+.curve-invert-btn {
+  align-self: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.curve-invert-btn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text);
+}
+
+.curve-invert-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .curve-canvas {
@@ -459,6 +488,12 @@ a:hover {
   stroke: var(--primary);
   stroke-width: 2.5;
   stroke-linecap: round;
+}
+
+.curve-linear-ref {
+  stroke: var(--line);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
 }
 
 .curve-anchor {

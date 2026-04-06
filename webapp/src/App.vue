@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import CurveEditor from "./components/CurveEditor.vue";
+import TimingCurveEditor from "./components/TimingCurveEditor.vue";
 import QueuePanel from "./components/QueuePanel.vue";
 import RenderPreview from "./components/RenderPreview.vue";
 import SearchField from "./components/SearchField.vue";
@@ -26,7 +27,9 @@ function createDefaultRoute() {
       endZoom: 15.8,
       maxAltitude: 100,
       aggressiveness: 50,
-      smoothing: 0.92
+      smoothing: 0.92,
+      timingCurve: 50,
+      timingInverted: false
     }
   };
 }
@@ -419,6 +422,11 @@ onBeforeUnmount(() => {
             :camera="route.camera"
             :progress="previewProgress"
             :route="previewRoute"
+            @update-camera="route.camera = $event"
+          />
+          <TimingCurveEditor
+            :camera="route.camera"
+            :progress="previewProgress"
             @update-camera="route.camera = $event"
           />
           <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">

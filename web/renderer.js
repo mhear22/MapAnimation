@@ -120,6 +120,13 @@ function easeInOutCubic(value) {
     : 1 - Math.pow(-2 * value + 2, 3) / 2;
 }
 
+function sampleTimingEasing(t, intensity, inverted) {
+  const linear = t;
+  const cubic = easeInOutCubic(t);
+  const sign = inverted ? -1 : 1;
+  return linear + (cubic - linear) * clamp(intensity, 0, 1) * sign;
+}
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -181,7 +188,7 @@ function midpoint(a, b) {
 }
 
 function toAggressivenessControl(aggressiveness = 50) {
-  return lerp(0.15, 0.85, clamp(aggressiveness, 0, 100) / 100);
+  return lerp(0.02, 1.0, clamp(aggressiveness, 0, 100) / 100);
 }
 
 function sampleMirroredBlend(progress, aggressiveness = 50) {
@@ -415,7 +422,9 @@ async function setScene(scene) {
     },
     routePath: buildPathSampler(routeCoordinates),
     cameraPath: buildCameraPathSampler(routeCoordinates, camera.smoothing ?? scene.cameraSmoothing ?? 0.92),
-    aggressiveness: clamp(camera.aggressiveness ?? camera.curvePosition ?? 50, 0, 100)
+    aggressiveness: clamp(camera.aggressiveness ?? camera.curvePosition ?? 50, 0, 100),
+    timingCurve: clamp(camera.timingCurve ?? 50, 0, 100),
+    timingInverted: Boolean(camera.timingInverted)
   };
 
   state.markers.push(
@@ -464,7 +473,7 @@ async function renderFrame(progress) {
   const holdIn = 0.08;
   const holdOut = 0.08;
   const mapped = clamp((progress - holdIn) / (1 - holdIn - holdOut), 0, 1);
-  const eased = easeInOutCubic(mapped);
+  const eased = sampleTimingEasing(mapped, (state.cameras.timingCurve ?? 50) / 100, state.cameras.timingInverted);
 
   const pathCenter = samplePath(state.cameras.cameraPath, eased);
 
