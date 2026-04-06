@@ -1,61 +1,52 @@
 <script setup>
 defineProps({
-  jobs: {
-    type: Array,
-    required: true
-  }
+  jobs: { type: Array, required: true }
 });
 
 function describeProgress(job) {
-  if (!job.progress) {
-    return job.stage;
-  }
-
-  if (job.stage === "capturing_frames") {
-    return `${job.progress.frame ?? 0}/${job.progress.totalFrames ?? 0} frames`;
-  }
-
-  if (typeof job.progress.percent === "number") {
-    return `${Math.round(job.progress.percent)}%`;
-  }
-
+  if (!job.progress) return job.stage;
+  if (job.stage === "capturing_frames") return `${job.progress.frame ?? 0}/${job.progress.totalFrames ?? 0} frames`;
+  if (typeof job.progress.percent === "number") return `${Math.round(job.progress.percent)}%`;
   return job.stage;
 }
 
 function routeLine(job) {
   const start = job.summary?.startLabel || "Unknown start";
   const end = job.summary?.endLabel || "Unknown end";
-  return `${start} to ${end}`;
+  return `${start} \u2192 ${end}`;
+}
+
+function statusClass(status) {
+  return status || "pending";
 }
 </script>
 
 <template>
-  <section class="queue-panel">
-    <div class="section-header">
-      <h2>Render queue</h2>
+  <section class="queue-section">
+    <div class="queue-header">
+      <h2>Render Queue</h2>
+      <span class="queue-count">{{ jobs.length }} job{{ jobs.length === 1 ? '' : 's' }}</span>
     </div>
-    <div class="queue-list">
-      <div v-if="!jobs.length" class="queue-empty">No jobs queued.</div>
+    <div v-if="!jobs.length" class="queue-empty">No render jobs queued yet.</div>
+    <div v-else class="queue-list">
       <article
         v-for="job in jobs"
         :key="job.id"
         class="queue-item"
         :data-status="job.status"
       >
-        <div class="queue-row">
-          <strong>{{ job.summary?.name || routeLine(job) }}</strong>
-          <span class="queue-status">{{ job.status }}</span>
+        <div class="queue-item-title">{{ job.summary?.name || routeLine(job) }}</div>
+        <div class="queue-item-route">{{ routeLine(job) }}</div>
+        <div class="queue-item-row">
+          <span>{{ job.summary?.mode || "walking" }} &middot; {{ job.summary?.mapType || "satellite" }}</span>
+          <span class="queue-status-badge" :class="statusClass(job.status)">{{ job.status }}</span>
         </div>
-        <div class="queue-meta">
-          <span>{{ routeLine(job) }}</span>
-          <span>{{ job.summary?.mode || "walking" }} / {{ job.summary?.mapType || "satellite" }}</span>
-        </div>
-        <div class="queue-meta">
+        <div class="queue-item-row">
           <span>{{ job.stage }}</span>
           <span>{{ describeProgress(job) }}</span>
         </div>
         <div v-if="typeof job.progress?.percent === 'number'" class="queue-bar">
-          <div :style="{ width: `${Math.max(4, job.progress.percent)}%` }" />
+          <div class="queue-bar-fill" :style="{ width: `${Math.max(4, job.progress.percent)}%` }" />
         </div>
         <div v-if="job.error" class="queue-error">{{ job.error }}</div>
         <a
@@ -65,6 +56,7 @@ function routeLine(job) {
           target="_blank"
           rel="noreferrer"
         >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
           Open MP4
         </a>
       </article>
