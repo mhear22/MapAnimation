@@ -72,6 +72,8 @@ const searchState = reactive({
 });
 const sidebarOpen = ref(false);
 const queueOpen = ref(false);
+const showPresets = ref(false);
+const infoOpen = ref(false);
 const darkMode = ref(localStorage.getItem("theme") !== "light");
 
 watch(darkMode, (v) => {
@@ -207,7 +209,7 @@ async function loadPreset(id) {
   presetName.value = payload.name ?? payload.route.name ?? "";
   previewProgress.value = 0;
   schedulePreview(0);
-  sidebarOpen.value = false;
+  showPresets.value = false;
 }
 
 async function queueRender() {
@@ -310,9 +312,13 @@ onMounted(async () => {
     jobs.value = payload.jobs;
   };
   clickOutsideHandler = (e) => {
-    const wrap = document.querySelector(".queue-trigger-wrap");
-    if (queueOpen.value && wrap && !wrap.contains(e.target)) {
+    const queueWrap = document.querySelector(".queue-trigger-wrap");
+    if (queueOpen.value && queueWrap && !queueWrap.contains(e.target)) {
       queueOpen.value = false;
+    }
+    const infoWrap = document.querySelector(".info-trigger-wrap");
+    if (infoOpen.value && infoWrap && !infoWrap.contains(e.target)) {
+      infoOpen.value = false;
     }
   };
   document.addEventListener("click", clickOutsideHandler);
@@ -345,6 +351,20 @@ onBeforeUnmount(() => {
           <svg v-if="darkMode" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
           <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
         </button>
+        <div class="info-trigger-wrap">
+          <button class="btn btn-sm info-toggle" @click="infoOpen = !infoOpen" :class="{ active: infoOpen }" title="About MapAnim">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          </button>
+          <div v-if="infoOpen" class="info-dropdown" @click.stop>
+            <div class="info-dropdown-header">About MapAnim</div>
+            <div class="info-dropdown-body">
+              <p>MapAnim creates animated map route videos. Configure origin and destination points, choose travel modes, adjust camera motion curves, and render smooth flyover animations as MP4.</p>
+              <div class="info-divider" />
+              <p class="info-credits-label">Built by</p>
+              <p class="info-credits">Mika, <a href="https://z.ai/chat" target="_blank" rel="noreferrer">GLM</a>, and <a href="https://openai.com/codex" target="_blank" rel="noreferrer">Codex</a></p>
+            </div>
+          </div>
+        </div>
         <div class="queue-trigger-wrap">
           <button class="btn btn-sm queue-trigger" @click="toggleQueue" :class="{ active: queueOpen }" :title="`${jobs.length} render job${jobs.length === 1 ? '' : 's'}`">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -408,7 +428,7 @@ onBeforeUnmount(() => {
 
     <!-- Sidebar -->
     <aside class="sidebar" :class="{ open: sidebarOpen }">
-      <div class="sidebar-inner">
+      <div class="sidebar-scroll">
         <!-- Route Setup -->
         <div class="section">
           <div class="section-header">
@@ -423,21 +443,9 @@ onBeforeUnmount(() => {
               <input v-model="route.name" class="text-input" placeholder="e.g. Airport hop" />
             </label>
             <label class="field">
-              <span class="field-label">Preset name</span>
-              <input v-model="presetName" class="text-input" placeholder="Reusable preset name" />
-            </label>
-            <label class="field">
               <span class="field-label">Output file</span>
               <input v-model="route.output" class="text-input" placeholder="output/custom.mp4" />
             </label>
-          </div>
-          <div class="button-row" style="margin-top:12px;">
-            <button type="button" class="btn btn-primary" :disabled="!canQueueRender" @click="queueRender">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3" /></svg>
-              Queue render
-            </button>
-            <button type="button" class="btn" @click="savePreset">Save preset</button>
-            <button type="button" class="btn btn-danger" @click="resetRoute">Reset</button>
           </div>
         </div>
 
@@ -536,28 +544,38 @@ onBeforeUnmount(() => {
             </label>
           </div>
         </div>
+      </div>
 
-        <div class="section-divider" />
-
-        <!-- Presets -->
-        <div class="section">
-          <div class="section-header">
-            <h2>Presets</h2>
-            <span class="meta"><span>{{ presets.length }} saved</span></span>
-          </div>
-          <div class="preset-list">
-            <div v-if="!presets.length" class="field-hint">No presets saved yet.</div>
-            <button
-              v-for="preset in presets"
-              :key="preset.id"
-              class="preset-item"
-              type="button"
-              @click="loadPreset(preset.id)"
-            >
-              <span>{{ preset.name }}</span>
-              <span class="preset-source">{{ preset.source }}</span>
-            </button>
-          </div>
+      <!-- Persistent bottom panel -->
+      <div class="sidebar-panel">
+        <div v-if="showPresets" class="sidebar-panel-presets">
+          <div v-if="!presets.length" class="field-hint">No presets saved yet.</div>
+          <button
+            v-for="preset in presets"
+            :key="preset.id"
+            class="preset-item"
+            type="button"
+            @click="loadPreset(preset.id)"
+          >
+            <span>{{ preset.name }}</span>
+            <span class="preset-source">{{ preset.source }}</span>
+          </button>
+        </div>
+        <label class="field" style="margin-bottom:6px;">
+          <span class="field-label">Preset name</span>
+          <input v-model="presetName" class="text-input" placeholder="Reusable preset name" />
+        </label>
+        <div class="sidebar-panel-actions">
+          <button type="button" class="btn btn-primary sidebar-panel-btn" :disabled="!canQueueRender" @click="queueRender">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+            Queue
+          </button>
+          <button type="button" class="btn sidebar-panel-btn" @click="savePreset">Save</button>
+          <button type="button" class="btn sidebar-panel-btn" :class="{ active: showPresets }" @click="showPresets = !showPresets">
+            Load
+            <span v-if="presets.length" class="preset-count-badge">{{ presets.length }}</span>
+          </button>
+          <button type="button" class="btn btn-danger sidebar-panel-btn" @click="resetRoute">Reset</button>
         </div>
       </div>
     </aside>
