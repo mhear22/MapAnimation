@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import CurveEditor from "./components/CurveEditor.vue";
 import TimingCurveEditor from "./components/TimingCurveEditor.vue";
-import QueuePanel from "./components/QueuePanel.vue";
 import RenderPreview from "./components/RenderPreview.vue";
 import SearchField from "./components/SearchField.vue";
 
@@ -72,6 +71,7 @@ const searchState = reactive({
   endLoading: false
 });
 const sidebarOpen = ref(false);
+const queueOpen = ref(false);
 
 const playing = ref(false);
 let playRaf = 0;
@@ -148,6 +148,12 @@ function togglePlay() {
 function toggleSidebar() {
   sidebarOpen.value = !sidebarOpen.value;
 }
+
+function toggleQueue() {
+  queueOpen.value = !queueOpen.value;
+}
+
+const activeJobCount = computed(() => jobs.value.filter(j => j.status === "pending" || j.status === "processing").length);
 
 async function loadPresets() {
   const payload = await requestJson("/api/presets");
@@ -286,6 +292,8 @@ watch(() => route.start.query, (query) => scheduleSearch("start", query));
 watch(() => route.end.query, (query) => scheduleSearch("end", query));
 watch(route, () => schedulePreview(), { deep: true, immediate: true });
 
+let clickOutsideHandler = null;
+
 onMounted(async () => {
   await Promise.all([loadPresets(), loadJobs()]);
   events = new EventSource("/api/render-events");
@@ -293,6 +301,13 @@ onMounted(async () => {
     const payload = JSON.parse(event.data);
     jobs.value = payload.jobs;
   };
+  clickOutsideHandler = (e) => {
+    const wrap = document.querySelector(".queue-trigger-wrap");
+    if (queueOpen.value && wrap && !wrap.contains(e.target)) {
+      queueOpen.value = false;
+    }
+  };
+  document.addEventListener("click", clickOutsideHandler);
 });
 
 onBeforeUnmount(() => {
@@ -301,6 +316,7 @@ onBeforeUnmount(() => {
   window.clearTimeout(previewTimer);
   cancelAnimationFrame(playRaf);
   events?.close();
+  if (clickOutsideHandler) document.removeEventListener("click", clickOutsideHandler);
 });
 </script>
 
@@ -317,6 +333,54 @@ onBeforeUnmount(() => {
         MapAnim
       </div>
       <div class="header-actions">
+        <div class="queue-trigger-wrap">
+          <button class="btn btn-sm queue-trigger" @click="toggleQueue" :class="{ active: queueOpen }" :title="`${jobs.length} render job${jobs.length === 1 ? '' : 's'}`">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
+            <span v-if="activeJobCount" class="queue-blip">{{ activeJobCount }}</span>
+          </button>
+          <div v-if="queueOpen" class="queue-dropdown" @click.stop>
+            <div class="queue-dropdown-header">
+              <span>Render Queue</span>
+              <span class="queue-count">{{ jobs.length }} job{{ jobs.length === 1 ? '' : 's' }}</span>
+            </div>
+            <div v-if="!jobs.length" class="queue-empty">No render jobs queued yet.</div>
+            <div v-else class="queue-dropdown-list">
+              <article
+                v-for="job in jobs"
+                :key="job.id"
+                class="queue-item"
+                :data-status="job.status"
+              >
+                <div class="queue-item-title">{{ job.summary?.name || (job.summary?.startLabel || 'Unknown') + ' → ' + (job.summary?.endLabel || 'Unknown') }}</div>
+                <div class="queue-item-route">{{ (job.summary?.startLabel || 'Unknown start') }} → {{ (job.summary?.endLabel || 'Unknown end') }}</div>
+                <div class="queue-item-row">
+                  <span>{{ job.summary?.mode || "walking" }} · {{ job.summary?.mapType || "satellite" }}</span>
+                  <span class="queue-status-badge" :class="job.status || 'pending'">{{ job.status }}</span>
+                </div>
+                <div class="queue-item-row">
+                  <span>{{ job.stage }}</span>
+                  <span>{{ job.progress ? (job.progress.frame != null ? `${job.progress.frame}/${job.progress.totalFrames ?? 0} frames` : typeof job.progress.percent === 'number' ? `${Math.round(job.progress.percent)}%` : job.stage) : job.stage }}</span>
+                </div>
+                <div v-if="typeof job.progress?.percent === 'number'" class="queue-bar">
+                  <div class="queue-bar-fill" :style="{ width: `${Math.max(4, job.progress.percent)}%` }" />
+                </div>
+                <div v-if="job.error" class="queue-error">{{ job.error }}</div>
+                <a
+                  v-if="job.result?.outputUrl"
+                  class="queue-link"
+                  :href="job.result.outputUrl"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                  Open MP4
+                </a>
+              </article>
+            </div>
+          </div>
+        </div>
         <button class="btn btn-sm" @click="toggleSidebar" :class="{ 'sidebar-toggle': true }">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="3" y1="12" x2="21" y2="12" />
@@ -488,10 +552,13 @@ onBeforeUnmount(() => {
 
     <!-- Main workspace -->
     <main class="workspace">
-      <section class="preview-section">
-        <div class="preview-header">
-          <h2>Preview</h2>
+      <RenderPreview :route="previewRoute" :progress="previewProgress" />
+
+      <!-- Overlay controls on top of preview -->
+      <div class="preview-overlay">
+        <div class="preview-overlay-top">
           <div class="preview-badges">
+            <span v-if="previewLocationLabel" class="preview-location-chip">{{ previewLocationLabel }}</span>
             <span v-if="previewDistance" class="badge badge-green">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22c-4-3.5-8-7-8-11a8 8 0 0116 0c0 4-4 7.5-8 11z" /></svg>
               {{ previewDistance }}
@@ -512,12 +579,9 @@ onBeforeUnmount(() => {
             </span>
           </div>
         </div>
-        <RenderPreview :route="previewRoute" :progress="previewProgress" />
-        <div class="preview-footer">
-          <div v-if="previewLocationLabel" class="preview-caption">{{ previewLocationLabel }}</div>
+        <div class="preview-overlay-bottom">
           <div class="timeline">
             <div class="timeline-meta">
-              <label for="preview-progress">Timeline</label>
               <button
                 class="btn btn-sm play-btn"
                 :disabled="!previewRoute"
@@ -533,9 +597,7 @@ onBeforeUnmount(() => {
             <strong>{{ Math.round(previewProgress * 100) }}%</strong>
           </div>
         </div>
-      </section>
-
-      <QueuePanel :jobs="jobs" />
+      </div>
     </main>
   </div>
 </template>
