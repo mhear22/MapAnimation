@@ -39,7 +39,7 @@ The app includes:
 ./render-all.sh
 ```
 
-This reads [routes.json](/Users/mikaheares/Documents/git/MapAnim/routes.json) and writes every configured video to `output/`.
+This reads [routes.json](./routes.json) and writes every configured video to `output/`.
 
 ## Render a one-off route
 
