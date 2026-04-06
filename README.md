@@ -15,7 +15,7 @@ npm run install:browsers
 npm run dev
 ```
 
-This starts the Vite webapp at [http://127.0.0.1:5173](http://127.0.0.1:5173) and the local API/render server at [http://127.0.0.1:4822](http://127.0.0.1:4822). The dev server proxies `/api`, `/render`, and render assets so search and preview work from the Vite URL.
+This now runs as a single Node process at [http://127.0.0.1:5173](http://127.0.0.1:5173). The app server mounts Vite in middleware mode, so the frontend, API, render surface, and tiles all come from the same dev server.
 
 If you want to run just the packaged local server, use:
 
@@ -121,4 +121,4 @@ Notes:
 - `--ipc=host` is recommended for Chromium stability in containers.
 - The `:Z` suffix is useful on SELinux-enabled Podman hosts.
 - Mounting `output/`, `presets/`, and `routes.json` keeps your renders and local data outside the container image.
-- `npm run dev` still uses an internal API/render port of `4822` by default, but the user-facing app stays on `5173`. Override the backend port with `MAPANIM_API_PORT=...` if needed.
+- If you still want the older split workflow, `npm run dev:webapp` can proxy to a separately started backend from `npm run dev:server` using `MAPANIM_API_PORT`.

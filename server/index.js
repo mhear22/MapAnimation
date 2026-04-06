@@ -16,6 +16,7 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const webDir = path.join(rootDir, "web");
 const webappDistDir = path.join(rootDir, "webapp", "dist");
+const isDev = process.env.MAPANIM_DEV === "1";
 const providerRegistry = createProviderRegistry();
 const presetStore = createPresetStore({ rootDir });
 const tileCache = createTileCache();
@@ -198,7 +199,66 @@ async function serveFile(response, filePath) {
   response.end(data);
 }
 
-async function handleRequest(request, response) {
+function sendError(response, error) {
+  response.writeHead(500, {
+    "Content-Type": "application/json; charset=utf-8"
+  });
+  response.end(JSON.stringify({ error: error.message }));
+}
+
+async function createViteDevServer(server) {
+  const { createServer } = await import("vite");
+  process.env.MAPANIM_VITE_MIDDLEWARE = "1";
+
+  return createServer({
+    configFile: path.join(rootDir, "vite.config.js"),
+    server: {
+      middlewareMode: true,
+      hmr: {
+        server
+      }
+    }
+  });
+}
+
+async function handOffToVite(vite, request, response) {
+  if (!vite) {
+    return false;
+  }
+
+  await new Promise((resolve, reject) => {
+    let settled = false;
+
+    const finish = (error) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      response.off("finish", onFinish);
+      response.off("close", onClose);
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    };
+
+    const onFinish = () => finish();
+    const onClose = () => finish();
+
+    response.on("finish", onFinish);
+    response.on("close", onClose);
+
+    vite.middlewares(request, response, (error) => finish(error));
+  });
+
+  return response.writableEnded;
+}
+
+async function handleRequest(request, response, vite) {
   try {
     const requested = new URL(request.url, baseUrl ?? "http://127.0.0.1");
     const pathname = requested.pathname;
@@ -215,6 +275,10 @@ async function handleRequest(request, response) {
       return;
     }
 
+    if (await handOffToVite(vite, request, response)) {
+      return;
+    }
+
     const requestedPath = pathname === "/" ? "/index.html" : pathname;
     const assetPath = safeResolve(webappDistDir, requestedPath);
 
@@ -225,29 +289,45 @@ async function handleRequest(request, response) {
 
     await serveFile(response, path.join(webappDistDir, "index.html"));
   } catch (error) {
-    sendJson(response, 500, {
-      error: error.message
-    });
+    vite?.ssrFixStacktrace?.(error);
+    if (!response.headersSent) {
+      sendError(response, error);
+      return;
+    }
+
+    response.end();
   }
 }
 
-const server = http.createServer((request, response) => {
-  void handleRequest(request, response);
-});
+async function main() {
+  let vite = null;
+  const server = http.createServer((request, response) => {
+    void handleRequest(request, response, vite);
+  });
 
-const port = Number(process.env.PORT ?? 5173);
-const host = process.env.HOST ?? "127.0.0.1";
-const localBaseHost = host === "0.0.0.0" ? "127.0.0.1" : host;
-
-server.listen(port, host, () => {
-  const address = server.address();
-  const resolvedPort = typeof address === "object" && address ? address.port : port;
-  baseUrl = `http://${localBaseHost}:${resolvedPort}`;
-
-  if (host === localBaseHost) {
-    console.log(`MapAnim webapp running at ${baseUrl}`);
-    return;
+  if (isDev) {
+    vite = await createViteDevServer(server);
   }
 
-  console.log(`MapAnim webapp running at ${baseUrl} (listening on ${host}:${resolvedPort})`);
+  const port = Number(process.env.PORT ?? 5173);
+  const host = process.env.HOST ?? "127.0.0.1";
+  const localBaseHost = host === "0.0.0.0" ? "127.0.0.1" : host;
+
+  server.listen(port, host, () => {
+    const address = server.address();
+    const resolvedPort = typeof address === "object" && address ? address.port : port;
+    baseUrl = `http://${localBaseHost}:${resolvedPort}`;
+
+    if (host === localBaseHost) {
+      console.log(`MapAnim webapp running at ${baseUrl}`);
+      return;
+    }
+
+    console.log(`MapAnim webapp running at ${baseUrl} (listening on ${host}:${resolvedPort})`);
+  });
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });
