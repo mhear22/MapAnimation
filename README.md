@@ -12,10 +12,19 @@ npm run install:browsers
 ## Run The Webapp
 
 ```bash
-npm run webapp
+npm run dev
 ```
 
-The app starts at [http://127.0.0.1:4822](http://127.0.0.1:4822). It is a Vue webapp served by the local Node server and includes:
+This starts the Vite webapp at [http://127.0.0.1:5173](http://127.0.0.1:5173) and the local API/render server at [http://127.0.0.1:4822](http://127.0.0.1:4822). The dev server proxies `/api`, `/render`, and render assets so search and preview work from the Vite URL.
+
+If you want to run just the packaged local server, use:
+
+```bash
+npm run build:webapp
+npm run dev:server
+```
+
+The app includes:
 
 - place search backed by the default OSM provider
 - live route preview via the existing MapLibre render surface

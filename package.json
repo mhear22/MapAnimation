@@ -7,7 +7,8 @@
     "install:browsers": "playwright install chromium",
     "build:webapp": "vite build",
     "dev:webapp": "vite",
-    "dev": "npm run dev:webapp",
+    "dev:server": "node server/index.js",
+    "dev": "node scripts/dev.js",
     "render": "node scripts/render.js --config ./routes.json",
     "render:route": "node scripts/render.js",
     "test": "node --test"
