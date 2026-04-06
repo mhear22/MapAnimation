@@ -1,0 +1,15 @@
+.git
+.gitignore
+node_modules
+webapp/dist
+output
+.tmp
+.tile-cache
+coverage
+.nyc_output
+playwright-report
+test-results
+*.log
+.env
+.env.*
+presets/*.json

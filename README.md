@@ -88,3 +88,36 @@ The older top-level `startZoom`, `endZoom`, and `cameraSmoothing` fields still w
 `aggressiveness` controls how quickly the move opens up from the start toward that midpoint framing. The second half mirrors the first.
 
 `flying` generates a curved flight path automatically, which is useful for long airport-to-airport moves.
+
+## Container
+
+The repo now includes a root `Dockerfile` that works with Podman because it uses a standard OCI image layout. It installs Chromium for Playwright, `ffmpeg` for encoding, builds the Vue app, and starts the packaged server on port `4822`.
+
+Build the image:
+
+```bash
+podman build -t mapanim .
+```
+
+Run it:
+
+```bash
+mkdir -p output presets
+
+podman run --rm \
+  --name mapanim \
+  --ipc=host \
+  -p 4822:4822 \
+  -v "$(pwd)/output:/app/output:Z" \
+  -v "$(pwd)/presets:/app/presets:Z" \
+  -v "$(pwd)/routes.json:/app/routes.json:Z" \
+  mapanim
+```
+
+Then open [http://127.0.0.1:4822](http://127.0.0.1:4822).
+
+Notes:
+
+- `--ipc=host` is recommended for Chromium stability in containers.
+- The `:Z` suffix is useful on SELinux-enabled Podman hosts.
+- Mounting `output/`, `presets/`, and `routes.json` keeps your renders and local data outside the container image.

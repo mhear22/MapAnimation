@@ -7,6 +7,7 @@ import { createProviderRegistry } from "../lib/providers/index.js";
 import { createRenderQueue } from "../lib/render/queue.js";
 import { renderRouteToVideo } from "../lib/render/video.js";
 import { prepareRoute } from "../lib/routes.js";
+import { createTileCache } from "../lib/tile-cache.js";
 import { contentTypeFor } from "../lib/utils.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,6 +17,7 @@ const webDir = path.join(rootDir, "web");
 const webappDistDir = path.join(rootDir, "webapp", "dist");
 const providerRegistry = createProviderRegistry();
 const presetStore = createPresetStore({ rootDir });
+const tileCache = createTileCache();
 const sseClients = new Set();
 let baseUrl = null;
 
@@ -224,6 +226,13 @@ async function handleRequest(request, response) {
       return;
     }
 
+    const tileMatch = pathname.match(/^\/tiles\/(\w+)\/(\d+)\/(\d+)\/(\d+)/);
+    if (tileMatch) {
+      const [, provider, z, x, y] = tileMatch;
+      await tileCache.handleTileRequest(request, response, provider, +z, +x, +y);
+      return;
+    }
+
     const requestedPath = pathname === "/" ? "/index.html" : pathname;
     const assetPath = safeResolve(webappDistDir, requestedPath);
 
@@ -245,8 +254,18 @@ const server = http.createServer((request, response) => {
 });
 
 const port = Number(process.env.PORT ?? 4822);
-server.listen(port, "127.0.0.1", () => {
+const host = process.env.HOST ?? "127.0.0.1";
+const localBaseHost = host === "0.0.0.0" ? "127.0.0.1" : host;
+
+server.listen(port, host, () => {
   const address = server.address();
-  baseUrl = `http://127.0.0.1:${address.port}`;
-  console.log(`MapAnim webapp running at ${baseUrl}`);
+  const resolvedPort = typeof address === "object" && address ? address.port : port;
+  baseUrl = `http://${localBaseHost}:${resolvedPort}`;
+
+  if (host === localBaseHost) {
+    console.log(`MapAnim webapp running at ${baseUrl}`);
+    return;
+  }
+
+  console.log(`MapAnim webapp running at ${baseUrl} (listening on ${host}:${resolvedPort})`);
 });

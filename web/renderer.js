@@ -17,10 +17,7 @@ function buildBaseStyle(mapType = "satellite") {
         carto: {
           type: "raster",
           tiles: [
-            "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-            "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-            "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-            "https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
+            "/tiles/standard/{z}/{x}/{y}"
           ],
           tileSize: 256,
           attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
@@ -42,7 +39,7 @@ function buildBaseStyle(mapType = "satellite") {
       carto: {
         type: "raster",
         tiles: [
-          "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          "/tiles/satellite/{z}/{x}/{y}"
         ],
         tileSize: 256,
         attribution: "Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community"
