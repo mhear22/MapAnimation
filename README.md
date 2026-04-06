@@ -91,7 +91,7 @@ The older top-level `startZoom`, `endZoom`, and `cameraSmoothing` fields still w
 
 ## Container
 
-The repo now includes a root `Dockerfile` that works with Podman because it uses a standard OCI image layout. It installs Chromium for Playwright, `ffmpeg` for encoding, builds the Vue app, and starts the packaged server on port `4822`.
+The repo now includes a root `Dockerfile` that works with Podman because it uses a standard OCI image layout. It installs Chromium for Playwright, `ffmpeg` for encoding, builds the Vue app, and starts the packaged server on port `5173`.
 
 Build the image:
 
@@ -107,17 +107,18 @@ mkdir -p output presets
 podman run --rm \
   --name mapanim \
   --ipc=host \
-  -p 4822:4822 \
+  -p 5173:5173 \
   -v "$(pwd)/output:/app/output:Z" \
   -v "$(pwd)/presets:/app/presets:Z" \
   -v "$(pwd)/routes.json:/app/routes.json:Z" \
   mapanim
 ```
 
-Then open [http://127.0.0.1:4822](http://127.0.0.1:4822).
+Then open [http://127.0.0.1:5173](http://127.0.0.1:5173).
 
 Notes:
 
 - `--ipc=host` is recommended for Chromium stability in containers.
 - The `:Z` suffix is useful on SELinux-enabled Podman hosts.
 - Mounting `output/`, `presets/`, and `routes.json` keeps your renders and local data outside the container image.
+- `npm run dev` still uses an internal API/render port of `4822` by default, but the user-facing app stays on `5173`. Override the backend port with `MAPANIM_API_PORT=...` if needed.

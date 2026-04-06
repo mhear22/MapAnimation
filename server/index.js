@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createPresetStore } from "../lib/presets/store.js";
 import { createProviderRegistry } from "../lib/providers/index.js";
 import { createRenderQueue } from "../lib/render/queue.js";
+import { createRenderAssetHandler, safeResolve } from "../lib/render/asset-handler.js";
 import { renderRouteToVideo } from "../lib/render/video.js";
 import { prepareRoute } from "../lib/routes.js";
 import { createTileCache } from "../lib/tile-cache.js";
@@ -20,15 +21,6 @@ const presetStore = createPresetStore({ rootDir });
 const tileCache = createTileCache();
 const sseClients = new Set();
 let baseUrl = null;
-
-function safeResolve(basePath, requestedPath) {
-  const resolved = path.resolve(basePath, `.${requestedPath}`);
-  if (!resolved.startsWith(basePath)) {
-    throw new Error("Path escapes base directory");
-  }
-
-  return resolved;
-}
 
 async function readRequestBody(request) {
   let body = "";
@@ -110,6 +102,14 @@ const queue = createRenderQueue({
 
 queue.subscribe(() => {
   broadcastJobs(queue);
+});
+
+const handleRenderAssetRequest = createRenderAssetHandler({
+  rootDir,
+  webDir,
+  mountPath: "/render",
+  allowOutput: true,
+  tileCache
 });
 
 async function handleApi(request, response, pathname) {
@@ -211,25 +211,7 @@ async function handleRequest(request, response) {
       return;
     }
 
-    if (pathname === "/render/" || pathname === "/render/index.html") {
-      await serveFile(response, path.join(webDir, "index.html"));
-      return;
-    }
-
-    if (pathname === "/render/renderer.js") {
-      await serveFile(response, path.join(webDir, "renderer.js"));
-      return;
-    }
-
-    if (pathname.startsWith("/node_modules/") || pathname.startsWith("/output/")) {
-      await serveFile(response, safeResolve(rootDir, pathname));
-      return;
-    }
-
-    const tileMatch = pathname.match(/^\/tiles\/(\w+)\/(\d+)\/(\d+)\/(\d+)/);
-    if (tileMatch) {
-      const [, provider, z, x, y] = tileMatch;
-      await tileCache.handleTileRequest(request, response, provider, +z, +x, +y);
+    if (await handleRenderAssetRequest(request, response, pathname)) {
       return;
     }
 
@@ -253,7 +235,7 @@ const server = http.createServer((request, response) => {
   void handleRequest(request, response);
 });
 
-const port = Number(process.env.PORT ?? 4822);
+const port = Number(process.env.PORT ?? 5173);
 const host = process.env.HOST ?? "127.0.0.1";
 const localBaseHost = host === "0.0.0.0" ? "127.0.0.1" : host;
 

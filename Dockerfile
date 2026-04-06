@@ -3,7 +3,7 @@ FROM node:24-bookworm
 WORKDIR /app
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    PORT=4822 \
+    PORT=5173 \
     HOST=0.0.0.0
 
 RUN apt-get update \
@@ -23,6 +23,6 @@ RUN npm run build:webapp \
 
 ENV NODE_ENV=production
 
-EXPOSE 4822
+EXPOSE 5173
 
 CMD ["node", "server/index.js"]

@@ -55,58 +55,6 @@ function buildBaseStyle(mapType = "satellite") {
   };
 }
 
-async function addRouteLayers() {
-  state.map.addSource("route", {
-    type: "geojson",
-    data: {
-      type: "FeatureCollection",
-      features: []
-    }
-  });
-
-  state.map.addLayer({
-    id: "route-shadow",
-    type: "line",
-    source: "route",
-    filter: ["==", "$type", "LineString"],
-    paint: {
-      "line-color": "rgba(9, 35, 58, 0.25)",
-      "line-width": 14,
-      "line-blur": 1
-    }
-  });
-
-  state.map.addLayer({
-    id: "route-line",
-    type: "line",
-    source: "route",
-    filter: ["==", "$type", "LineString"],
-    paint: {
-      "line-color": "#0f9f8f",
-      "line-width": 8
-    }
-  });
-
-  state.map.addLayer({
-    id: "route-points",
-    type: "circle",
-    source: "route",
-    filter: ["==", "$type", "Point"],
-    paint: {
-      "circle-radius": 8,
-      "circle-color": [
-        "match",
-        ["get", "kind"],
-        "end",
-        "#0f9f8f",
-        "#152634"
-      ],
-      "circle-stroke-color": "#ffffff",
-      "circle-stroke-width": 3
-    }
-  });
-}
-
 function createMarker(label, className) {
   const element = document.createElement("div");
   element.className = `route-label ${className}`.trim();
@@ -307,9 +255,30 @@ function samplePath(path, progress) {
   return path.coordinates[path.coordinates.length - 1];
 }
 
-function once(eventName) {
+function waitForMapEvent(eventName, timeoutMs = 2500) {
   return new Promise((resolve) => {
-    state.map.once(eventName, resolve);
+    let settled = false;
+    let timeoutId = 0;
+
+    const finish = (result) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      window.clearTimeout(timeoutId);
+      state.map.off(eventName, onEvent);
+      resolve(result);
+    };
+
+    const onEvent = () => {
+      finish(true);
+    };
+
+    state.map.on(eventName, onEvent);
+    timeoutId = window.setTimeout(() => {
+      finish(false);
+    }, timeoutMs);
   });
 }
 
@@ -325,8 +294,81 @@ async function waitForIdle(timeoutMs = 2500) {
     return;
   }
 
-  await Promise.race([once("idle"), sleep(timeoutMs)]);
+  await waitForMapEvent("idle", timeoutMs);
   await sleep(120);
+}
+
+async function waitForStyleLoad(timeoutMs = 2500) {
+  if (state.map.isStyleLoaded()) {
+    return;
+  }
+
+  const loaded = await waitForMapEvent("style.load", timeoutMs);
+  if (!loaded && !state.map.isStyleLoaded()) {
+    throw new Error("Timed out waiting for the map style to load");
+  }
+}
+
+async function ensureRouteLayers() {
+  await waitForStyleLoad();
+
+  if (!state.map.getSource("route")) {
+    state.map.addSource("route", {
+      type: "geojson",
+      data: {
+        type: "FeatureCollection",
+        features: []
+      }
+    });
+  }
+
+  if (!state.map.getLayer("route-shadow")) {
+    state.map.addLayer({
+      id: "route-shadow",
+      type: "line",
+      source: "route",
+      filter: ["==", "$type", "LineString"],
+      paint: {
+        "line-color": "rgba(9, 35, 58, 0.25)",
+        "line-width": 14,
+        "line-blur": 1
+      }
+    });
+  }
+
+  if (!state.map.getLayer("route-line")) {
+    state.map.addLayer({
+      id: "route-line",
+      type: "line",
+      source: "route",
+      filter: ["==", "$type", "LineString"],
+      paint: {
+        "line-color": "#0f9f8f",
+        "line-width": 8
+      }
+    });
+  }
+
+  if (!state.map.getLayer("route-points")) {
+    state.map.addLayer({
+      id: "route-points",
+      type: "circle",
+      source: "route",
+      filter: ["==", "$type", "Point"],
+      paint: {
+        "circle-radius": 8,
+        "circle-color": [
+          "match",
+          ["get", "kind"],
+          "end",
+          "#0f9f8f",
+          "#152634"
+        ],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 3
+      }
+    });
+  }
 }
 
 async function setupMap() {
@@ -347,8 +389,8 @@ async function setupMap() {
     preserveDrawingBuffer: true
   });
 
-  await once("load");
-  await addRouteLayers();
+  await waitForMapEvent("load");
+  await ensureRouteLayers();
   state.mapType = "satellite";
 
   await waitForIdle();
@@ -367,10 +409,9 @@ async function setScene(scene) {
   const targetMapType = scene.mapType ?? "satellite";
   if (targetMapType !== state.mapType) {
     state.map.setStyle(buildBaseStyle(targetMapType));
-    await once("styledata");
-    await addRouteLayers();
     state.mapType = targetMapType;
   }
+  await ensureRouteLayers();
   state.map.resize();
   removeMarkers();
   state.scene = scene;
@@ -393,7 +434,7 @@ async function setScene(scene) {
   const bounds = computeBounds(routeCoordinates);
   const canvas = state.map.getCanvas();
   const maxPadding = Math.max(24, Math.floor(Math.min(canvas.width || 0, canvas.height || 0) / 4) || 24);
-  const paddingValue = Math.min(scene.overviewPadding ?? 180, maxPadding);
+  const paddingValue = clamp(Number(scene.overviewPadding ?? 180), 0, maxPadding);
   const overviewCamera = state.map.cameraForBounds(bounds, {
     padding: {
       top: paddingValue,
