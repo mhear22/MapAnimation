@@ -95,13 +95,11 @@ let events = null;
 let startSearchTimer = 0;
 let endSearchTimer = 0;
 let previewTimer = 0;
+let pollTimer = 0;
+const baseTitle = document.title;
 
 const previewReady = computed(() => Boolean(route.start.query.trim() && route.end.query.trim()));
-const transitNeedsPresetPath = computed(() => {
-  if (route.mode !== "public transport") return false;
-  return !Array.isArray(route.path?.coordinates) || route.path.coordinates.length < 2;
-});
-const canQueueRender = computed(() => previewReady.value && !transitNeedsPresetPath.value);
+const canQueueRender = computed(() => previewReady.value);
 const routeSummaryLabel = computed(() => route.name || route.id || "Untitled route");
 const previewLocationLabel = computed(() => {
   if (!previewRoute.value) return "";
@@ -117,7 +115,6 @@ const previewLocationLabel = computed(() => {
 });
 const previewStatus = computed(() => {
   if (!previewReady.value) return { text: "Enter both locations to load a preview", type: "neutral" };
-  if (transitNeedsPresetPath.value) return { text: "Public transport needs a preset with path coordinates", type: "neutral" };
   if (previewError.value) return { text: previewError.value, type: "error" };
   if (previewLoading.value) return { text: "Syncing preview\u2026", type: "syncing" };
   return previewRoute.value
@@ -167,6 +164,10 @@ function toggleQueue() {
 }
 
 const activeJobCount = computed(() => jobs.value.filter(j => j.status === "pending" || j.status === "processing").length);
+
+watch(activeJobCount, (count) => {
+  document.title = count ? `(${count}) ${baseTitle}` : baseTitle;
+});
 
 async function loadPresets() {
   const payload = await requestJson("/api/presets");
@@ -292,7 +293,7 @@ function scheduleSearch(kind, query) {
 function schedulePreview(delayMs = 320) {
   window.clearTimeout(previewTimer);
   previewTimer = window.setTimeout(async () => {
-    if (!previewReady.value || transitNeedsPresetPath.value) {
+    if (!previewReady.value) {
       previewRoute.value = null;
       previewError.value = "";
       previewLoading.value = false;
@@ -330,6 +331,10 @@ onMounted(async () => {
     const payload = JSON.parse(event.data);
     jobs.value = payload.jobs;
   };
+  pollTimer = window.setInterval(loadJobs, 30_000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) loadJobs();
+  });
   clickOutsideHandler = (e) => {
     const queueWrap = document.querySelector(".queue-trigger-wrap");
     if (queueOpen.value && queueWrap && !queueWrap.contains(e.target)) {
@@ -347,6 +352,7 @@ onBeforeUnmount(() => {
   window.clearTimeout(startSearchTimer);
   window.clearTimeout(endSearchTimer);
   window.clearTimeout(previewTimer);
+  window.clearInterval(pollTimer);
   cancelAnimationFrame(playRaf);
   events?.close();
   if (clickOutsideHandler) document.removeEventListener("click", clickOutsideHandler);
@@ -377,7 +383,7 @@ onBeforeUnmount(() => {
           <div v-if="infoOpen" class="info-dropdown" @click.stop>
             <div class="info-dropdown-header">About MapAnim</div>
             <div class="info-dropdown-body">
-              <p>MapAnim creates animated map route videos. Configure origin and destination points, choose travel modes, adjust camera motion curves, and render smooth flyover animations as MP4.</p>
+              <p>MapAnim creates animated map route videos. Configure origin and destination points, choose a travel mode, adjust camera motion curves, and render smooth flyover animations as MP4.</p>
               <div class="info-divider" />
               <p class="info-credits-label">Built by</p>
               <p class="info-credits">Mika, <a href="https://z.ai/chat" target="_blank" rel="noreferrer">GLM</a>, and <a href="https://openai.com/codex" target="_blank" rel="noreferrer">Codex</a></p>
@@ -495,7 +501,6 @@ onBeforeUnmount(() => {
                   <option value="walking">Walking</option>
                   <option value="driving">Driving</option>
                   <option value="flying">Flying</option>
-                  <option value="public transport">Public transport</option>
                 </select>
               </label>
               <label class="field">
@@ -505,9 +510,6 @@ onBeforeUnmount(() => {
                   <option value="standard">Standard</option>
                 </select>
               </label>
-            </div>
-            <div v-if="transitNeedsPresetPath" class="field-hint" style="color:var(--warning);">
-              Public transport requires a preset with path coordinates.
             </div>
           </div>
         </div>
@@ -534,29 +536,17 @@ onBeforeUnmount(() => {
                 <span class="field-label">Duration (s)</span>
                 <input v-model.number="route.durationSeconds" class="text-input" type="number" min="4" max="20" step="0.5" />
               </label>
-              <label class="field">
-                <span class="field-label">Max altitude</span>
-                <input v-model.number="route.camera.maxAltitude" class="text-input" type="number" min="50" max="150" step="1" />
-              </label>
             </div>
-            <div class="field-row-3">
-              <label class="field">
-                <span class="field-label">Start zoom</span>
-                <input v-model.number="route.camera.startZoom" class="text-input" type="number" min="3" max="18" step="0.1" />
-              </label>
-              <label class="field">
-                <span class="field-label">End zoom</span>
-                <input v-model.number="route.camera.endZoom" class="text-input" type="number" min="3" max="18" step="0.1" />
-              </label>
+            <div class="field-row">
               <label class="field">
                 <span class="field-label">Smoothing</span>
                 <input v-model.number="route.camera.smoothing" class="text-input" type="number" min="0" max="1" step="0.01" />
               </label>
+              <label class="field">
+                <span class="field-label">Lerp aggressiveness</span>
+                <input v-model.number="route.camera.aggressiveness" class="text-input" type="number" min="0" max="100" step="1" />
+              </label>
             </div>
-            <label class="field">
-              <span class="field-label">Lerp aggressiveness</span>
-              <input v-model.number="route.camera.aggressiveness" class="text-input" type="number" min="0" max="100" step="1" />
-            </label>
           </div>
         </div>
       </div>

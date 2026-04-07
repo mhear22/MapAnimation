@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 
 const props = defineProps({
   camera: { type: Object, required: true },
@@ -8,6 +8,36 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update-camera"]);
+
+const editField = ref(null);
+const startZoomInput = ref(null);
+const endZoomInput = ref(null);
+const maxAltitudeInput = ref(null);
+
+watch(editField, async (field) => {
+  if (!field) return;
+  await nextTick();
+  if (field === "startZoom" && startZoomInput.value) startZoomInput.value.focus();
+  if (field === "endZoom" && endZoomInput.value) endZoomInput.value.focus();
+  if (field === "maxAltitude" && maxAltitudeInput.value) maxAltitudeInput.value.focus();
+});
+
+function commitZoom(field, event) {
+  const value = clamp(parseFloat(event.target.value) || 3, minZoom, maxZoom);
+  updateCamera({ [field]: value });
+}
+
+function commitAlt(event) {
+  const value = clamp(Math.round(parseFloat(event.target.value) || 100), 50, 150);
+  updateCamera({ maxAltitude: value });
+}
+
+function finishEdit(field, event) {
+  if (field === "startZoom") commitZoom("startZoom", event);
+  else if (field === "endZoom") commitZoom("endZoom", event);
+  else if (field === "maxAltitude") commitAlt(event);
+  editField.value = null;
+}
 
 const width = 360;
 const height = 220;
@@ -171,17 +201,56 @@ onBeforeUnmount(() => {
 <template>
   <div class="curve-editor">
     <div class="curve-summary">
-      <div class="curve-summary-item">
+      <div class="curve-summary-item editable" @click="editField = 'startZoom'">
         <div class="label">Start</div>
-        <div class="value">{{ camera.startZoom.toFixed(1) }}x</div>
+        <input
+          v-if="editField === 'startZoom'"
+          ref="startZoomInput"
+          :value="camera.startZoom"
+          class="curve-inline-input"
+          type="number"
+          min="3"
+          max="18"
+          step="0.1"
+          @blur="finishEdit('startZoom', $event)"
+          @keydown.enter="finishEdit('startZoom', $event)"
+          @keydown.escape="editField = null"
+        />
+        <div v-else class="value">{{ camera.startZoom.toFixed(1) }}x</div>
       </div>
-      <div class="curve-summary-item">
+      <div class="curve-summary-item editable" @click="editField = 'maxAltitude'">
         <div class="label">Farthest</div>
-        <div class="value">{{ peakZoom.toFixed(1) }}x @ {{ camera.maxAltitude }}%</div>
+        <input
+          v-if="editField === 'maxAltitude'"
+          ref="maxAltitudeInput"
+          :value="camera.maxAltitude"
+          class="curve-inline-input"
+          type="number"
+          min="50"
+          max="150"
+          step="1"
+          @blur="finishEdit('maxAltitude', $event)"
+          @keydown.enter="finishEdit('maxAltitude', $event)"
+          @keydown.escape="editField = null"
+        />
+        <div v-else class="value">{{ peakZoom.toFixed(1) }}x @ {{ camera.maxAltitude }}%</div>
       </div>
-      <div class="curve-summary-item">
+      <div class="curve-summary-item editable" @click="editField = 'endZoom'">
         <div class="label">End</div>
-        <div class="value">{{ camera.endZoom.toFixed(1) }}x</div>
+        <input
+          v-if="editField === 'endZoom'"
+          ref="endZoomInput"
+          :value="camera.endZoom"
+          class="curve-inline-input"
+          type="number"
+          min="3"
+          max="18"
+          step="0.1"
+          @blur="finishEdit('endZoom', $event)"
+          @keydown.enter="finishEdit('endZoom', $event)"
+          @keydown.escape="editField = null"
+        />
+        <div v-else class="value">{{ camera.endZoom.toFixed(1) }}x</div>
       </div>
     </div>
     <svg ref="svgRef" class="curve-canvas" :viewBox="`0 0 ${width} ${height}`">

@@ -5,6 +5,7 @@
   --surface-overlay: #21262d;
   --line: #30363d;
   --line-subtle: #21262d;
+  --input-border: #484f58;
   --text: #e6edf3;
   --text-secondary: #8b949e;
   --text-tertiary: #6e7681;
@@ -36,6 +37,7 @@
   --surface-overlay: #f0f2f5;
   --line: #d0d7de;
   --line-subtle: #e8ecf0;
+  --input-border: #afb8c4;
   --text: #1f2328;
   --text-secondary: #656d76;
   --text-tertiary: #8c959f;
@@ -256,7 +258,7 @@ a:hover {
 .text-input,
 .select-input {
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text);
@@ -452,6 +454,32 @@ a:hover {
   font-weight: 600;
   color: var(--text);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.curve-summary-item.editable {
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.curve-summary-item.editable:hover {
+  border-color: var(--primary);
+  background: var(--primary-muted);
+}
+
+.curve-inline-input {
+  width: 100%;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  padding: 2px 4px;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  text-align: center;
+  box-shadow: 0 0 0 3px var(--primary-muted);
 }
 
 .curve-invert-btn {
