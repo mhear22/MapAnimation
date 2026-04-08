@@ -1,11 +1,47 @@
-<script setup>
+<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import CurveEditor from "./components/CurveEditor.vue";
 import TimingCurveEditor from "./components/TimingCurveEditor.vue";
 import RenderPreview from "./components/RenderPreview.vue";
 import SearchField from "./components/SearchField.vue";
+import type { ProviderSearchResult, PreparedRoute, SerializedJob, PresetItem } from "../../types/index.js";
+import type { RouteConfig } from "../../types/index.js";
 
-function createDefaultRoute() {
+interface FormLocation {
+  label: string;
+  query: string;
+  coords: [number, number] | null;
+}
+
+interface FormCamera {
+  startZoom: number;
+  endZoom: number;
+  maxAltitude: number;
+  aggressiveness: number;
+  smoothing: number;
+  timingCurve: number;
+  timingInverted: boolean;
+}
+
+interface RouteFormData {
+  id: string;
+  name: string;
+  provider: string;
+  mode: string;
+  mapType: string;
+  width: number;
+  height: number;
+  fps: number;
+  durationSeconds: number;
+  overviewPadding: number;
+  output: string;
+  start: FormLocation;
+  end: FormLocation;
+  path: RouteConfig["path"] | null;
+  camera: FormCamera;
+}
+
+function createDefaultRoute(): RouteFormData {
   return {
     id: "",
     name: "",
@@ -33,16 +69,16 @@ function createDefaultRoute() {
   };
 }
 
-async function requestJson(url, options) {
+async function requestJson<T = unknown>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
+    const payload = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(payload.error ?? `Request failed with status ${response.status}`);
   }
-  return response.json();
+  return response.json() as Promise<T>;
 }
 
-function routeForPreview(route) {
+function routeForPreview(route: RouteFormData): Record<string, unknown> {
   return {
     ...route,
     start: { ...route.start, coords: route.start.coords ?? undefined },
@@ -50,14 +86,14 @@ function routeForPreview(route) {
   };
 }
 
-function distanceLabel(route) {
+function distanceLabel(route: PreparedRoute | null): string | null {
   const meters = route?.path?.distanceMeters;
   if (!meters) return null;
   return meters > 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
 }
 
-const route = reactive(createDefaultRoute());
-const previewRoute = ref(null);
+const route = reactive<RouteFormData>(createDefaultRoute());
+const previewRoute = ref<PreparedRoute | null>(null);
 const previewProgress = ref(0);
 const previewError = ref("");
 const previewLoading = ref(false);
@@ -66,9 +102,16 @@ const saveModalOpen = ref(false);
 const saveModalName = ref("");
 const loadModalOpen = ref(false);
 const resetModalOpen = ref(false);
-const presets = ref([]);
-const jobs = ref([]);
-const searchState = reactive({
+const presets = ref<PresetItem[]>([]);
+const jobs = ref<SerializedJob[]>([]);
+interface SearchState {
+  startResults: ProviderSearchResult[];
+  endResults: ProviderSearchResult[];
+  startLoading: boolean;
+  endLoading: boolean;
+}
+
+const searchState = reactive<SearchState>({
   startResults: [],
   endResults: [],
   startLoading: false,
@@ -79,7 +122,7 @@ const queueOpen = ref(false);
 const infoOpen = ref(false);
 const darkMode = ref(localStorage.getItem("theme") !== "light");
 
-watch(darkMode, (v) => {
+watch(darkMode, (v: boolean) => {
   document.documentElement.setAttribute("data-theme", v ? "dark" : "light");
   localStorage.setItem("theme", v ? "dark" : "light");
   const meta = document.querySelector('meta[name="theme-color"]');
@@ -91,17 +134,17 @@ let playRaf = 0;
 let playStart = 0;
 let playFrom = 0;
 
-let events = null;
-let startSearchTimer = 0;
-let endSearchTimer = 0;
-let previewTimer = 0;
-let pollTimer = 0;
+let events: EventSource | null = null;
+let startSearchTimer: ReturnType<typeof setTimeout> | undefined;
+let endSearchTimer: ReturnType<typeof setTimeout> | undefined;
+let previewTimer: ReturnType<typeof setTimeout> | undefined;
+let pollTimer: ReturnType<typeof setInterval> | undefined;
 const baseTitle = document.title;
 
-const previewReady = computed(() => Boolean(route.start.query.trim() && route.end.query.trim()));
-const canQueueRender = computed(() => previewReady.value);
-const routeSummaryLabel = computed(() => route.name || route.id || "Untitled route");
-const previewLocationLabel = computed(() => {
+const previewReady = computed<boolean>(() => Boolean(route.start.query.trim() && route.end.query.trim()));
+const canQueueRender = computed<boolean>(() => previewReady.value);
+const routeSummaryLabel = computed<string>(() => route.name || route.id || "Untitled route");
+const previewLocationLabel = computed<string>(() => {
   if (!previewRoute.value) return "";
   const startLabel =
     previewRoute.value.from?.label || previewRoute.value.start?.label ||
@@ -113,7 +156,7 @@ const previewLocationLabel = computed(() => {
     route.end.label || route.end.query || "Destination";
   return `${startLabel} \u2192 ${endLabel}`;
 });
-const previewStatus = computed(() => {
+const previewStatus = computed<{ text: string; type: string }>(() => {
   if (!previewReady.value) return { text: "Enter both locations to load a preview", type: "neutral" };
   if (previewError.value) return { text: previewError.value, type: "error" };
   if (previewLoading.value) return { text: "Syncing preview\u2026", type: "syncing" };
@@ -122,15 +165,15 @@ const previewStatus = computed(() => {
     : { text: "Preview unavailable", type: "neutral" };
 });
 
-const previewDistance = computed(() => distanceLabel(previewRoute.value));
+const previewDistance = computed<string | null>(() => distanceLabel(previewRoute.value));
 
-function stopPlayback() {
+function stopPlayback(): void {
   playing.value = false;
   cancelAnimationFrame(playRaf);
   playRaf = 0;
 }
 
-function tickAnimation(timestamp) {
+function tickAnimation(timestamp: number): void {
   if (!playing.value) return;
   const elapsed = (timestamp - playStart) / 1000;
   const duration = route.durationSeconds || 8;
@@ -143,7 +186,7 @@ function tickAnimation(timestamp) {
   playRaf = requestAnimationFrame(tickAnimation);
 }
 
-function togglePlay() {
+function togglePlay(): void {
   if (playing.value) {
     stopPlayback();
   } else {
@@ -155,31 +198,31 @@ function togglePlay() {
   }
 }
 
-function toggleSidebar() {
+function toggleSidebar(): void {
   sidebarOpen.value = !sidebarOpen.value;
 }
 
-function toggleQueue() {
+function toggleQueue(): void {
   queueOpen.value = !queueOpen.value;
 }
 
-const activeJobCount = computed(() => jobs.value.filter(j => j.status === "pending" || j.status === "processing").length);
+const activeJobCount = computed<number>(() => jobs.value.filter(j => j.status === "pending" || j.status === "processing").length);
 
-watch(activeJobCount, (count) => {
+watch(activeJobCount, (count: number) => {
   document.title = count ? `(${count}) ${baseTitle}` : baseTitle;
 });
 
-async function loadPresets() {
-  const payload = await requestJson("/api/presets");
+async function loadPresets(): Promise<void> {
+  const payload = await requestJson<{ presets: PresetItem[] }>("/api/presets");
   presets.value = payload.presets;
 }
 
-async function loadJobs() {
-  const payload = await requestJson("/api/render-jobs");
+async function loadJobs(): Promise<void> {
+  const payload = await requestJson<{ jobs: SerializedJob[] }>("/api/render-jobs");
   jobs.value = payload.jobs;
 }
 
-function applyRoute(nextRoute) {
+function applyRoute(nextRoute: Partial<RouteFormData> & Partial<RouteConfig>): void {
   const defaults = createDefaultRoute();
   const nextCamera = nextRoute.camera ?? {};
   Object.assign(route, defaults, nextRoute, {
@@ -195,7 +238,7 @@ function applyRoute(nextRoute) {
   });
 }
 
-function openSaveModal() {
+function openSaveModal(): void {
   saveModalName.value = presetName.value || route.name || "";
   saveModalOpen.value = true;
   nextTick(() => {
@@ -204,9 +247,9 @@ function openSaveModal() {
   });
 }
 
-async function confirmSave() {
+async function confirmSave(): Promise<void> {
   const name = saveModalName.value.trim() || route.name || "Route preset";
-  const payload = await requestJson("/api/presets", {
+  const payload = await requestJson<{ name: string; route: { id: string; name?: string } }>("/api/presets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, route: JSON.parse(JSON.stringify(route)) })
@@ -218,8 +261,8 @@ async function confirmSave() {
   await loadPresets();
 }
 
-async function loadPreset(id) {
-  const payload = await requestJson(`/api/presets/${encodeURIComponent(id)}`);
+async function loadPreset(id: string): Promise<void> {
+  const payload = await requestJson<{ name?: string; route: RouteConfig }>(`/api/presets/${encodeURIComponent(id)}`);
   applyRoute(payload.route);
   presetName.value = payload.name ?? payload.route.name ?? "";
   previewProgress.value = 0;
@@ -227,7 +270,7 @@ async function loadPreset(id) {
   loadModalOpen.value = false;
 }
 
-async function queueRender() {
+async function queueRender(): Promise<void> {
   if (!canQueueRender.value) return;
   await requestJson("/api/render-jobs", {
     method: "POST",
@@ -236,7 +279,7 @@ async function queueRender() {
   });
 }
 
-function resetRoute() {
+function resetRoute(): void {
   applyRoute(createDefaultRoute());
   presetName.value = "";
   previewProgress.value = 0;
@@ -248,37 +291,37 @@ function resetRoute() {
   searchState.endLoading = false;
 }
 
-function confirmReset() {
+function confirmReset(): void {
   resetRoute();
   resetModalOpen.value = false;
 }
 
-function applySearchResult(kind, result) {
+function applySearchResult(kind: "start" | "end", result: ProviderSearchResult): void {
   route[kind] = { label: result.label, query: result.query, coords: result.coords };
   searchState[`${kind}Results`] = [];
   schedulePreview(0);
 }
 
-function updateLocationQuery(kind, query) {
+function updateLocationQuery(kind: "start" | "end", query: string): void {
   route[kind] = { ...route[kind], label: "", query, coords: null };
   if (!query.trim()) searchState[`${kind}Results`] = [];
   schedulePreview(0);
 }
 
-function scheduleSearch(kind, query) {
-  const timerName = kind === "start" ? "startSearchTimer" : "endSearchTimer";
-  window.clearTimeout(timerName === "startSearchTimer" ? startSearchTimer : endSearchTimer);
+function scheduleSearch(kind: "start" | "end", query: string): void {
+  const timerRef = kind === "start" ? startSearchTimer : endSearchTimer;
+  window.clearTimeout(timerRef);
   const handle = window.setTimeout(async () => {
-    const resultsKey = `${kind}Results`;
-    const loadingKey = `${kind}Loading`;
+    const resultsKey = `${kind}Results` as keyof SearchState;
+    const loadingKey = `${kind}Loading` as keyof SearchState;
     if (!query || query.trim().length < 3) {
-      searchState[resultsKey] = [];
+      searchState[resultsKey] = [] as ProviderSearchResult[];
       searchState[loadingKey] = false;
       return;
     }
     searchState[loadingKey] = true;
     try {
-      const payload = await requestJson(`/api/search?q=${encodeURIComponent(query)}`);
+      const payload = await requestJson<{ results: ProviderSearchResult[] }>(`/api/search?q=${encodeURIComponent(query)}`);
       searchState[resultsKey] = payload.results;
     } catch (error) {
       console.error(error);
@@ -286,11 +329,11 @@ function scheduleSearch(kind, query) {
       searchState[loadingKey] = false;
     }
   }, 260);
-  if (timerName === "startSearchTimer") startSearchTimer = handle;
+  if (kind === "start") startSearchTimer = handle;
   else endSearchTimer = handle;
 }
 
-function schedulePreview(delayMs = 320) {
+function schedulePreview(delayMs: number = 320): void {
   window.clearTimeout(previewTimer);
   previewTimer = window.setTimeout(async () => {
     if (!previewReady.value) {
@@ -303,26 +346,26 @@ function schedulePreview(delayMs = 320) {
     previewLoading.value = true;
     previewError.value = "";
     try {
-      const preview = await requestJson("/api/preview", {
+      const preview = await requestJson<{ route: PreparedRoute }>("/api/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ route: payload })
       });
       previewRoute.value = preview.route;
-    } catch (error) {
+    } catch (error: unknown) {
       previewRoute.value = null;
-      previewError.value = error.message;
+      previewError.value = error instanceof Error ? error.message : String(error);
     } finally {
       previewLoading.value = false;
     }
   }, delayMs);
 }
 
-watch(() => route.start.query, (query) => scheduleSearch("start", query));
-watch(() => route.end.query, (query) => scheduleSearch("end", query));
+watch(() => route.start.query, (query: string) => scheduleSearch("start", query));
+watch(() => route.end.query, (query: string) => scheduleSearch("end", query));
 watch(route, () => schedulePreview(), { deep: true, immediate: true });
 
-let clickOutsideHandler = null;
+let clickOutsideHandler: ((e: MouseEvent) => void) | null = null;
 
 onMounted(async () => {
   await Promise.all([loadPresets(), loadJobs()]);
