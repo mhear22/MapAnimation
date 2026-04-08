@@ -61,8 +61,8 @@ function mapRange(value, inMin, inMax, outMin, outMax) {
 function toRadians(value) { return (value * Math.PI) / 180; }
 
 function depthToY(depth) { return mapRange(clamp(depth, 0, 1), 0, 1, margin.top, height - margin.bottom); }
-function halfProgressToX(progress) { return mapRange(clamp(progress, 0, 1), 0, 1, margin.left, width - margin.right); }
-function xToHalfProgress(x) { return mapRange(clamp(x, margin.left, width - margin.right), margin.left, width - margin.right, 0, 1); }
+function progressToX(progress) { return mapRange(clamp(progress, 0, 1), 0, 1, margin.left, width - margin.right); }
+function xToProgress(x) { return mapRange(clamp(x, margin.left, width - margin.right), margin.left, width - margin.right, 0, 1); }
 
 function toAggressivenessControl(aggressiveness = 50) {
   return lerp(minAggressivenessControl, maxAggressivenessControl, clamp(aggressiveness, 0, 100) / 100);
@@ -130,31 +130,37 @@ const peakZoom = computed(() => {
   return clamp(closerZoom - requiredZoomOut * (maxAltitude.value / 100), minZoom, maxZoom);
 });
 
-function sampleHalfDepth(progress) { return sampleMirroredBlend(progress, aggressiveness.value); }
+const taperPower = 2.5;
 
-const startPoint = computed(() => ({ x: halfProgressToX(0), y: depthToY(0) }));
-const peakPoint = computed(() => ({ x: halfProgressToX(1), y: depthToY(1) }));
+function sampleFullDepth(progress) {
+  const mapped = clamp(progress, 0, 1);
+  const halfProgress = 1 - Math.abs(mapped - 0.5) * 2;
+  const rawBlend = sampleMirroredBlend(halfProgress, aggressiveness.value);
+  return 1 - Math.pow(1 - rawBlend, taperPower);
+}
+
+const startPoint = computed(() => ({ x: progressToX(0), y: depthToY(0) }));
+const peakPoint = computed(() => ({ x: progressToX(0.5), y: depthToY(1) }));
+const endPoint = computed(() => ({ x: progressToX(1), y: depthToY(0) }));
 const handlePoint = computed(() => {
-  const halfProgress = 0.5;
-  return { x: halfProgressToX(halfProgress), y: depthToY(sampleHalfDepth(halfProgress)) };
+  return { x: progressToX(0.25), y: depthToY(sampleFullDepth(0.25)) };
 });
 
-const mirroredHalfProgress = computed(() => {
-  const mapped = clamp((props.progress - holdIn) / (1 - holdIn - holdOut), 0, 1);
-  return mapped <= 0.5 ? mapped / 0.5 : (1 - mapped) / 0.5;
+const currentMapped = computed(() => {
+  return clamp((props.progress - holdIn) / (1 - holdIn - holdOut), 0, 1);
 });
 
 const currentPoint = computed(() => ({
-  x: halfProgressToX(mirroredHalfProgress.value),
-  y: depthToY(sampleHalfDepth(mirroredHalfProgress.value))
+  x: progressToX(currentMapped.value),
+  y: depthToY(sampleFullDepth(currentMapped.value))
 }));
 
 const pathData = computed(() => {
   const samples = [];
-  const sampleCount = 48;
+  const sampleCount = 96;
   for (let index = 0; index < sampleCount; index++) {
     const progress = sampleCount === 1 ? 0 : index / (sampleCount - 1);
-    samples.push(`${index === 0 ? "M" : "L"} ${halfProgressToX(progress)} ${depthToY(sampleHalfDepth(progress))}`);
+    samples.push(`${index === 0 ? "M" : "L"} ${progressToX(progress)} ${depthToY(sampleFullDepth(progress))}`);
   }
   return samples.join(" ");
 });
@@ -177,10 +183,12 @@ function getLocalPoint(event) {
 function onPointerMove(event) {
   if (!dragState.value) return;
   const point = getLocalPoint(event);
-  const halfProgress = xToHalfProgress(point.x);
-  const targetBlend = clamp(mapRange(point.y, startPoint.value.y, peakPoint.value.y || startPoint.value.y + 1, 0, 1), 0, 1);
+  const fullProgress = xToProgress(point.x);
+  const targetDepth = clamp(mapRange(point.y, startPoint.value.y, peakPoint.value.y || startPoint.value.y + 1, 0, 1), 0, 1);
+  const halfProgress = 1 - Math.abs(fullProgress - 0.5) * 2;
+  const rawBlend = 1 - Math.pow(1 - targetDepth, 1 / taperPower);
   const control = clamp(
-    (targetBlend - halfProgress * halfProgress) / (2 * (1 - halfProgress) * halfProgress || 1),
+    (rawBlend - halfProgress * halfProgress) / (2 * (1 - halfProgress) * halfProgress || 1),
     minAggressivenessControl,
     maxAggressivenessControl
   );
@@ -259,17 +267,20 @@ onBeforeUnmount(() => {
       <line class="curve-axis" :x1="margin.left" :x2="margin.left" :y1="margin.top" :y2="height - margin.bottom" />
       <line class="curve-axis" :x1="margin.left" :x2="width - margin.right" :y1="height - margin.bottom" :y2="height - margin.bottom" />
       <line class="curve-progress" :x1="currentPoint.x" :x2="currentPoint.x" :y1="margin.top" :y2="height - margin.bottom" />
+      <line class="curve-midline" :x1="peakPoint.x" :x2="peakPoint.x" :y1="margin.top" :y2="height - margin.bottom" />
       <path class="curve-path" :d="pathData" />
       <line class="curve-guide" :x1="handlePoint.x" :x2="handlePoint.x" :y1="handlePoint.y" :y2="height - margin.bottom" />
       <circle class="curve-anchor" :cx="startPoint.x" :cy="startPoint.y" r="5" />
       <circle class="curve-anchor" :cx="peakPoint.x" :cy="peakPoint.y" r="5" />
+      <circle class="curve-anchor" :cx="endPoint.x" :cy="endPoint.y" r="5" />
       <circle class="curve-handle control" :cx="handlePoint.x" :cy="handlePoint.y" r="7" @pointerdown.prevent="startDrag($event)" />
       <circle class="curve-current" :cx="currentPoint.x" :cy="currentPoint.y" r="4" />
-      <text class="curve-text" :x="margin.left" :y="height - 10">0%</text>
-      <text class="curve-text" :x="width - margin.right - 22" :y="height - 10">Mid</text>
+      <text class="curve-text" :x="margin.left" :y="height - 10">Start</text>
+      <text class="curve-text" :x="peakPoint.x - 8" :y="height - 10">Mid</text>
+      <text class="curve-text" :x="width - margin.right - 14" :y="height - 10">End</text>
       <text class="curve-text" :x="6" :y="margin.top + 4">Near</text>
       <text class="curve-text" :x="12" :y="height - margin.bottom">Far</text>
     </svg>
-    <div class="curve-note">The graph shows the first half of the move. The second half mirrors automatically.</div>
+    <div class="curve-note">Drag handle to adjust the zoom curve shape.</div>
   </div>
 </template>

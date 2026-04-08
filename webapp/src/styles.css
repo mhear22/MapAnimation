@@ -547,6 +547,13 @@ a:hover {
   stroke-dasharray: 3 4;
 }
 
+.curve-midline {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 2 6;
+  opacity: 0.4;
+}
+
 .curve-path {
   fill: none;
   stroke: var(--primary);

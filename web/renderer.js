@@ -516,14 +516,16 @@ async function renderFrame(progress) {
   const mapped = clamp((progress - holdIn) / (1 - holdIn - holdOut), 0, 1);
   const eased = sampleTimingEasing(mapped, (state.cameras.timingCurve ?? 50) / 100, state.cameras.timingInverted);
 
-  const pathCenter = samplePath(state.cameras.cameraPath, eased);
+  const pathCenter = samplePath(state.cameras.cameraPath, 0.5 - 0.5 * Math.cos(eased * Math.PI));
 
-  const halfProgress = mapped <= 0.5 ? mapped / 0.5 : (mapped - 0.5) / 0.5;
-  const zoomBlend = sampleMirroredBlend(halfProgress, state.cameras.aggressiveness);
+  const halfProgress = 1 - Math.abs(mapped - 0.5) * 2;
+  const rawBlend = sampleMirroredBlend(halfProgress, state.cameras.aggressiveness);
+  const taperPower = 2.5;
+  const zoomBlend = 1 - Math.pow(1 - rawBlend, taperPower);
   const zoomValue =
     mapped <= 0.5
       ? lerp(state.cameras.start.zoom, state.cameras.overview.zoom, zoomBlend)
-      : lerp(state.cameras.overview.zoom, state.cameras.end.zoom, zoomBlend);
+      : lerp(state.cameras.overview.zoom, state.cameras.end.zoom, 1 - zoomBlend);
 
   state.map.jumpTo({
     center: pathCenter,
