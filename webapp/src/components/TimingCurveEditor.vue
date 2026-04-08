@@ -1,8 +1,14 @@
-<script setup>
+<script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from "vue";
+import type { NormalizedCamera } from "../../types/index.js";
+
+interface TimingCameraLike extends NormalizedCamera {
+  timingCurve?: number;
+  timingInverted?: boolean;
+}
 
 const props = defineProps({
-  camera: { type: Object, required: true },
+  camera: { type: Object as () => TimingCameraLike, required: true },
   progress: { type: Number, default: 0 }
 });
 
@@ -11,36 +17,36 @@ const emit = defineEmits(["update-camera"]);
 const width = 360;
 const height = 220;
 const margin = { top: 22, right: 18, bottom: 32, left: 24 };
-const dragState = ref(null);
-const svgRef = ref(null);
+const dragState = ref<string | null>(null);
+const svgRef = ref<SVGSVGElement | null>(null);
 
 const handleT = 0.25;
 
-function clamp(value, min, max) { return Math.min(Math.max(value, min), max); }
+function clamp(value: number, min: number, max: number): number { return Math.min(Math.max(value, min), max); }
 
-function easeInOutCubic(value) {
+function easeInOutCubic(value: number): number {
   return value < 0.5
     ? 4 * value * value * value
     : 1 - Math.pow(-2 * value + 2, 3) / 2;
 }
 
-function sampleTimingEasing(t, intensity, isInverted) {
+function sampleTimingEasing(t: number, intensity: number, isInverted: boolean): number {
   const linear = t;
   const cubic = easeInOutCubic(t);
   const sign = isInverted ? -1 : 1;
   return linear + (cubic - linear) * clamp(intensity, 0, 1) * sign;
 }
 
-function progressToX(p) { return margin.left + p * (width - margin.left - margin.right); }
-function easedToY(e) { return margin.top + (1 - e) * (height - margin.top - margin.bottom); }
-function xToProgress(x) { return clamp((x - margin.left) / (width - margin.left - margin.right), 0, 1); }
-function yToEased(y) { return clamp(1 - (y - margin.top) / (height - margin.top - margin.bottom), 0, 1); }
+function progressToX(p: number): number { return margin.left + p * (width - margin.left - margin.right); }
+function easedToY(e: number): number { return margin.top + (1 - e) * (height - margin.top - margin.bottom); }
+function xToProgress(x: number): number { return clamp((x - margin.left) / (width - margin.left - margin.right), 0, 1); }
+function yToEased(y: number): number { return clamp(1 - (y - margin.top) / (height - margin.top - margin.bottom), 0, 1); }
 
-const timingCurve = computed(() => clamp(Number(props.camera.timingCurve ?? 50), 0, 100));
-const intensity = computed(() => timingCurve.value / 100);
-const inverted = computed(() => Boolean(props.camera.timingInverted));
+const timingCurve = computed<number>(() => clamp(Number(props.camera.timingCurve ?? 50), 0, 100));
+const intensity = computed<number>(() => timingCurve.value / 100);
+const inverted = computed<boolean>(() => Boolean(props.camera.timingInverted));
 
-const curveLabel = computed(() => {
+const curveLabel = computed<string>(() => {
   const v = timingCurve.value;
   const prefix = inverted.value ? "Inverted " : "";
   if (v <= 10) return `${prefix}Linear`;
@@ -50,18 +56,18 @@ const curveLabel = computed(() => {
   return `${prefix}Max ease`;
 });
 
-function sampleCurve(progress) { return sampleTimingEasing(progress, intensity.value, inverted.value); }
+function sampleCurve(progress: number): number { return sampleTimingEasing(progress, intensity.value, inverted.value); }
 
-const startPoint = computed(() => ({ x: progressToX(0), y: easedToY(0) }));
-const endPoint = computed(() => ({ x: progressToX(1), y: easedToY(1) }));
-const handlePoint = computed(() => ({ x: progressToX(handleT), y: easedToY(sampleCurve(handleT)) }));
+const startPoint = computed<{ x: number; y: number }>(() => ({ x: progressToX(0), y: easedToY(0) }));
+const endPoint = computed<{ x: number; y: number }>(() => ({ x: progressToX(1), y: easedToY(1) }));
+const handlePoint = computed<{ x: number; y: number }>(() => ({ x: progressToX(handleT), y: easedToY(sampleCurve(handleT)) }));
 
-const currentPoint = computed(() => ({
+const currentPoint = computed<{ x: number; y: number }>(() => ({
   x: progressToX(props.progress),
   y: easedToY(sampleCurve(props.progress))
 }));
 
-const pathData = computed(() => {
+const pathData = computed<string>(() => {
   const samples = [];
   const sampleCount = 64;
   for (let i = 0; i < sampleCount; i++) {
@@ -71,11 +77,11 @@ const pathData = computed(() => {
   return samples.join(" ");
 });
 
-const linearPathData = computed(() => {
+const linearPathData = computed<string>(() => {
   return `M ${progressToX(0)} ${easedToY(0)} L ${progressToX(1)} ${easedToY(1)}`;
 });
 
-const gridLines = computed(() => {
+const gridLines = computed<number[]>(() => {
   const values = [];
   for (let i = 0; i < 5; i++) {
     values.push(margin.top + (i / 4) * (height - margin.top - margin.bottom));
@@ -83,14 +89,14 @@ const gridLines = computed(() => {
   return values;
 });
 
-function updateCamera(nextValues) { emit("update-camera", { ...props.camera, ...nextValues }); }
+function updateCamera(nextValues: Partial<TimingCameraLike>): void { emit("update-camera", { ...props.camera, ...nextValues }); }
 
-function getLocalPoint(event) {
+function getLocalPoint(event: PointerEvent): { x: number; y: number } {
   const bounds = svgRef.value?.getBoundingClientRect();
   return { x: event.clientX - (bounds?.left ?? 0), y: event.clientY - (bounds?.top ?? 0) };
 }
 
-function onPointerMove(event) {
+function onPointerMove(event: PointerEvent): void {
   if (!dragState.value) return;
   const point = getLocalPoint(event);
   const eased = yToEased(point.y);
@@ -106,8 +112,8 @@ function onPointerMove(event) {
   updateCamera({ timingCurve: Math.round(clamp(rawIntensity, 0, 1) * 100) });
 }
 
-function stopDrag() { dragState.value = null; }
-function startDrag(event) { dragState.value = "handle"; onPointerMove(event); }
+function stopDrag(): void { dragState.value = null; }
+function startDrag(event: PointerEvent): void { dragState.value = "handle"; onPointerMove(event); }
 
 window.addEventListener("pointermove", onPointerMove);
 window.addEventListener("pointerup", stopDrag);
