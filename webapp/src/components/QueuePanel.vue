@@ -1,22 +1,24 @@
-<script setup>
+<script setup lang="ts">
+import type { SerializedJob } from "../../types/index.js";
+
 defineProps({
-  jobs: { type: Array, required: true }
+  jobs: { type: Array as () => SerializedJob[], required: true }
 });
 
-function describeProgress(job) {
+function describeProgress(job: SerializedJob): string {
   if (!job.progress) return job.stage;
   if (job.stage === "capturing_frames") return `${job.progress.frame ?? 0}/${job.progress.totalFrames ?? 0} frames`;
   if (typeof job.progress.percent === "number") return `${Math.round(job.progress.percent)}%`;
   return job.stage;
 }
 
-function routeLine(job) {
+function routeLine(job: SerializedJob): string {
   const start = job.summary?.startLabel || "Unknown start";
   const end = job.summary?.endLabel || "Unknown end";
   return `${start} \u2192 ${end}`;
 }
 
-function statusClass(status) {
+function statusClass(status: string): string {
   return status || "pending";
 }
 </script>
