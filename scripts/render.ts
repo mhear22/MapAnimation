@@ -14,7 +14,7 @@ const rootDir: string = path.resolve(__dirname, "..");
 const webDir: string = path.join(rootDir, "web");
 
 async function main(): Promise<void> {
-  const args: Record<string, string> = parseArgs(process.argv.slice(2));
+  const args: Record<string, string | boolean> = parseArgs(process.argv.slice(2));
   const routes: RouteConfig[] = await loadRoutes(args, { rootDir });
   const providerRegistry = createProviderRegistry();
   const assetServer = await createRenderAssetServer({ rootDir, webDir });
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
         rootDir,
         renderBaseUrl: assetServer.baseUrl,
         providerRegistry,
-        onProgress(progress: RenderProgress): void {
+        onProgress(progress: Partial<RenderProgress>): void {
           if (progress.stage === "capturing_frames") {
             console.log(
               `Capturing ${route.id ?? "route"} ${progress.frame}/${progress.totalFrames}`
