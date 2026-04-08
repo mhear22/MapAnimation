@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "docker": "podman build -t mapanim -f Dockerfile .",
+    "docker": "node scripts/docker.js",
+    "docker:deploy": "node scripts/docker-deploy.js",
     "install:browsers": "playwright install chromium",
     "build:webapp": "vite build",
     "dev:webapp": "vite",

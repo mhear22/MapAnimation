@@ -17,7 +17,8 @@ RUN npm ci \
 
 COPY . .
 
-RUN npm run build:webapp \
+RUN npm test \
+    && npm run build:webapp \
     && npm prune --omit=dev \
     && npm cache clean --force
 

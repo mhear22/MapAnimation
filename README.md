@@ -91,30 +91,25 @@ The older top-level `startZoom`, `endZoom`, and `cameraSmoothing` fields still w
 
 ## Container
 
-The repo now includes a root `Dockerfile` that works with Podman because it uses a standard OCI image layout. It installs Chromium for Playwright, `ffmpeg` for encoding, builds the Vue app, and starts the packaged server on port `5173`.
+The repo now includes a root `Dockerfile` that works with Docker or Podman because it uses a standard OCI image layout. It installs Chromium for Playwright, `ffmpeg` for encoding, runs the test suite during the image build, builds the Vue app, and starts the packaged server on port `5173`.
 
-Build the image:
-
-```bash
-podman build -t mapanim .
-```
-
-Run it:
+Build and run the container locally:
 
 ```bash
-mkdir -p output presets
-
-podman run --rm \
-  --name mapanim \
-  --ipc=host \
-  -p 5173:5173 \
-  -v "$(pwd)/output:/app/output:Z" \
-  -v "$(pwd)/presets:/app/presets:Z" \
-  -v "$(pwd)/routes.json:/app/routes.json:Z" \
-  mapanim
+npm run docker
 ```
+
+This builds a local `mapanim:local` image, creates `output/` and `presets/` if needed, and runs the container on port `5173` with the project `routes.json` mounted in.
 
 Then open [http://127.0.0.1:5173](http://127.0.0.1:5173).
+
+Build and push the image to ECR with the current git commit hash as the tag:
+
+```bash
+npm run docker:deploy
+```
+
+This requires the AWS CLI plus either Docker or Podman, and assumes you have permission to push to `115136208505.dkr.ecr.ap-southeast-2.amazonaws.com/mapanim`.
 
 Notes:
 
