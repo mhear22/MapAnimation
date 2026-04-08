@@ -1,5 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { RenderProgress } from "../types/index.js";
+import type { RouteConfig } from "../types/index.js";
 import { createProviderRegistry } from "../lib/providers/index.js";
 import { createRenderAssetServer } from "../lib/render/asset-server.js";
 import { renderRouteToVideo } from "../lib/render/video.js";
@@ -8,12 +10,12 @@ import { parseArgs } from "../lib/utils.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const rootDir = path.resolve(__dirname, "..");
-const webDir = path.join(rootDir, "web");
+const rootDir: string = path.resolve(__dirname, "..");
+const webDir: string = path.join(rootDir, "web");
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const routes = await loadRoutes(args, { rootDir });
+async function main(): Promise<void> {
+  const args: Record<string, string> = parseArgs(process.argv.slice(2));
+  const routes: RouteConfig[] = await loadRoutes(args, { rootDir });
   const providerRegistry = createProviderRegistry();
   const assetServer = await createRenderAssetServer({ rootDir, webDir });
 
@@ -24,7 +26,7 @@ async function main() {
         rootDir,
         renderBaseUrl: assetServer.baseUrl,
         providerRegistry,
-        onProgress(progress) {
+        onProgress(progress: RenderProgress): void {
           if (progress.stage === "capturing_frames") {
             console.log(
               `Capturing ${route.id ?? "route"} ${progress.frame}/${progress.totalFrames}`
@@ -47,7 +49,7 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+main().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });
