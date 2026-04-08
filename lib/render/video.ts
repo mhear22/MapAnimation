@@ -1,7 +1,7 @@
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { chromium, type Browser, type Page } from "playwright";
-import { buildOutputPath, prepareRoute } from "../routes.js";
+import { prepareRoute } from "../routes.js";
 import { ensureDir, sleep } from "../utils.js";
 import type { RouteConfig, PreparedRoute, RenderProgress, RenderResult } from "../../types/index.js";
 import type { ProviderRegistry, RendererWindow } from "../../types/index.js";
@@ -33,7 +33,6 @@ export async function renderRouteToVideo(
     routeConfig,
     providerRegistry ? { providerRegistry } : {}
   );
-  route.output = buildOutputPath(routeConfig);
 
   let browser: Browser | undefined;
 
@@ -73,7 +72,7 @@ export async function renderRouteToVideo(
     const durationSeconds = Number(route.durationSeconds ?? 8);
     const totalFrames = Math.max(2, Math.round(fps * durationSeconds));
 
-    const output = buildOutputPath(route);
+    const output = `output/${crypto.randomUUID()}.mp4`;
     route.output = output;
     await ensureOutputDir(rootDir, output);
     const outputPath = path.resolve(rootDir, output);
