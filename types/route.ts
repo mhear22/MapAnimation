@@ -15,6 +15,7 @@ export interface CameraConfig {
   cameraSmoothing?: number;
   timingCurve?: number;
   timingInverted?: boolean;
+  clipPath?: boolean;
 }
 
 export interface NormalizedCamera {
@@ -25,6 +26,7 @@ export interface NormalizedCamera {
   smoothing: number;
   timingCurve: number;
   timingInverted: boolean;
+  clipPath: boolean;
 }
 
 export interface RoutedPath {

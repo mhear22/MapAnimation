@@ -264,6 +264,32 @@ function samplePath(path, progress) {
   }
   return path.coordinates[path.coordinates.length - 1] ?? firstCoordinate;
 }
+function clipCoordinatesToProgress(path, progress) {
+  const firstCoordinate = path.coordinates[0];
+  if (!firstCoordinate || path.coordinates.length < 2 || path.total === 0) {
+    return path.coordinates.length ? [...path.coordinates] : [];
+  }
+  if (progress <= 0) return [firstCoordinate];
+  if (progress >= 1) return [...path.coordinates];
+  const target = path.total * progress;
+  for (let index = 1; index < path.cumulative.length; index += 1) {
+    const segmentEnd = path.cumulative[index];
+    const segmentStart = path.cumulative[index - 1];
+    const from = path.coordinates[index - 1];
+    const to = path.coordinates[index];
+    if (segmentEnd === void 0 || segmentStart === void 0 || !from || !to) {
+      continue;
+    }
+    if (target <= segmentEnd) {
+      const segmentLength = segmentEnd - segmentStart || 1;
+      const segmentProgress = (target - segmentStart) / segmentLength;
+      const clipped = path.coordinates.slice(0, index).map((c) => [...c]);
+      clipped.push(lerpPoint(from, to, segmentProgress));
+      return clipped;
+    }
+  }
+  return [...path.coordinates];
+}
 function waitForMapEvent(eventName, timeoutMs = 2500) {
   return new Promise((resolve) => {
     const map = requireMap();
@@ -456,7 +482,8 @@ async function setScene(scene) {
     cameraPath: buildCameraPathSampler(routeCoordinates, camera.smoothing),
     aggressiveness: clamp(camera.aggressiveness, 0, 100),
     timingCurve: clamp(camera.timingCurve, 0, 100),
-    timingInverted: camera.timingInverted
+    timingInverted: camera.timingInverted,
+    clipPath: camera.clipPath ?? false
   };
   state.markers.push(
     new maplibregl.Marker({
@@ -516,6 +543,26 @@ async function renderFrame(progress) {
     bearing: 0,
     pitch: 0
   });
+  if (cameras.clipPath && state.scene) {
+    const pathProgress = 0.5 - 0.5 * Math.cos(eased * Math.PI);
+    const clippedCoords = clipCoordinatesToProgress(cameras.routePath, pathProgress);
+    const routeSource = getRouteSource(map);
+    routeSource.setData({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: clippedCoords.length >= 2 ? clippedCoords : state.scene.path?.coordinates?.length ? state.scene.path.coordinates : [state.scene.from.coords, state.scene.to.coords]
+          },
+          properties: {}
+        },
+        buildPointFeature(state.scene.from, "start"),
+        buildPointFeature(state.scene.to, "end")
+      ]
+    });
+  }
   await sleep(16);
   await new Promise((resolve) => requestAnimationFrame(() => resolve()));
   state.lastProgress = progress;

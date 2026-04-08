@@ -47,7 +47,8 @@ function createDefaultRoute(): RouteFormData {
       aggressiveness: 50,
       smoothing: 0.92,
       timingCurve: 50,
-      timingInverted: false
+      timingInverted: false,
+      clipPath: false
     }
   };
 }
@@ -615,6 +616,13 @@ onBeforeUnmount(() => {
             <label class="field">
               <span class="field-label">Lerp aggressiveness</span>
               <input v-model.number="route.camera.aggressiveness" class="text-input" type="number" min="0" max="100" step="1" />
+            </label>
+            <label class="field">
+              <span class="field-label">Clip path to camera</span>
+              <select v-model="route.camera.clipPath" class="select-input">
+                <option :value="false">Off</option>
+                <option :value="true">On</option>
+              </select>
             </label>
           </div>
         </div>

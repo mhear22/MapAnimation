@@ -237,7 +237,8 @@ export function normalizeCamera(camera: Partial<CameraConfig> = {}, route: Parti
     aggressiveness,
     smoothing,
     timingCurve,
-    timingInverted
+    timingInverted,
+    clipPath: Boolean(camera.clipPath)
   };
 }
 

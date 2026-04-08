@@ -44,6 +44,7 @@ export interface FormCamera {
   smoothing: number;
   timingCurve: number;
   timingInverted: boolean;
+  clipPath: boolean;
 }
 
 export interface RouteFormData {
