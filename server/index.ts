@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { RouteConfig, JobSummary, RenderJob, RenderProgress, SerializedJob } from "../types/index.js";
 import { createPresetStore } from "../lib/presets/store.js";
 import { createProviderRegistry } from "../lib/providers/index.js";
 import { createRenderQueue } from "../lib/render/queue.js";
@@ -16,14 +17,14 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const webDir = path.join(rootDir, "web");
 const webappDistDir = path.join(rootDir, "webapp", "dist");
-const isDev = process.env.MAPANIM_DEV === "1";
+const isDev: boolean = process.env.MAPANIM_DEV === "1";
 const providerRegistry = createProviderRegistry();
 const presetStore = createPresetStore({ rootDir });
 const tileCache = createTileCache();
-const sseClients = new Set();
-let baseUrl = null;
+const sseClients = new Set<http.ServerResponse>();
+let baseUrl: string | null = null;
 
-async function readRequestBody(request) {
+async function readRequestBody(request: http.IncomingMessage): Promise<unknown> {
   let body = "";
   for await (const chunk of request) {
     body += chunk.toString();
@@ -32,14 +33,14 @@ async function readRequestBody(request) {
   return body ? JSON.parse(body) : {};
 }
 
-function sendJson(response, statusCode, payload) {
+function sendJson(response: http.ServerResponse, statusCode: number, payload: unknown): void {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8"
   });
   response.end(JSON.stringify(payload));
 }
 
-function jobSummary(route = {}) {
+function jobSummary(route: Partial<RouteConfig> = {}): JobSummary {
   return {
     id: route.id ?? null,
     name: route.name ?? route.id ?? null,
@@ -51,7 +52,7 @@ function jobSummary(route = {}) {
   };
 }
 
-function outputUrlFromAbsolute(filePath) {
+function outputUrlFromAbsolute(filePath: string | undefined | null): string | null {
   if (!filePath) {
     return null;
   }
@@ -64,7 +65,7 @@ function outputUrlFromAbsolute(filePath) {
   return `/${relative.split(path.sep).join("/")}`;
 }
 
-function serializeJob(job) {
+function serializeJob(job: RenderJob): SerializedJob {
   return {
     id: job.id,
     status: job.status,
@@ -84,7 +85,7 @@ function serializeJob(job) {
   };
 }
 
-function broadcastJobs(queue) {
+function broadcastJobs(queue: ReturnType<typeof createRenderQueue>): void {
   const payload = `data: ${JSON.stringify({ jobs: queue.list().map(serializeJob) })}\n\n`;
   for (const client of sseClients) {
     client.write(payload);
@@ -92,7 +93,7 @@ function broadcastJobs(queue) {
 }
 
 const queue = createRenderQueue({
-  worker: async (payload, emitProgress) =>
+  worker: async (payload: { route: RouteConfig }, emitProgress: (progress: RenderProgress) => void) =>
     renderRouteToVideo(payload.route, {
       rootDir,
       renderBaseUrl: `${baseUrl}/render/`,
@@ -113,9 +114,9 @@ const handleRenderAssetRequest = createRenderAssetHandler({
   tileCache
 });
 
-async function handleApi(request, response, pathname) {
+async function handleApi(request: http.IncomingMessage, response: http.ServerResponse, pathname: string): Promise<boolean> {
   if (request.method === "GET" && pathname === "/api/search") {
-    const requested = new URL(request.url, baseUrl ?? "http://127.0.0.1");
+    const requested = new URL(request.url!, baseUrl ?? "http://127.0.0.1");
     const query = requested.searchParams.get("q")?.trim();
     const providerName = requested.searchParams.get("provider") ?? providerRegistry.defaultProvider;
 
@@ -131,8 +132,8 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/preview") {
-    const body = await readRequestBody(request);
-    const route = await prepareRoute(body.route ?? body, { providerRegistry });
+    const body = await readRequestBody(request) as Record<string, unknown>;
+    const route = await prepareRoute((body.route ?? body) as RouteConfig, { providerRegistry });
     sendJson(response, 200, { route });
     return true;
   }
@@ -151,10 +152,10 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/presets") {
-    const body = await readRequestBody(request);
+    const body = await readRequestBody(request) as Record<string, unknown>;
     const saved = await presetStore.save({
-      name: body.name,
-      route: body.route
+      name: body.name as string | undefined,
+      route: body.route as RouteConfig
     });
     sendJson(response, 200, saved);
     return true;
@@ -166,9 +167,9 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/render-jobs") {
-    const body = await readRequestBody(request);
+    const body = await readRequestBody(request) as Record<string, unknown>;
     const job = queue.enqueue({
-      route: body.route ?? body
+      route: (body.route ?? body) as RouteConfig
     });
     sendJson(response, 202, { job: serializeJob(job) });
     return true;
@@ -191,7 +192,7 @@ async function handleApi(request, response, pathname) {
   return false;
 }
 
-async function serveFile(response, filePath) {
+async function serveFile(response: http.ServerResponse, filePath: string): Promise<void> {
   const data = await fs.readFile(filePath);
   response.writeHead(200, {
     "Content-Type": contentTypeFor(filePath)
@@ -199,19 +200,19 @@ async function serveFile(response, filePath) {
   response.end(data);
 }
 
-function sendError(response, error) {
+function sendError(response: http.ServerResponse, error: Error): void {
   response.writeHead(500, {
     "Content-Type": "application/json; charset=utf-8"
   });
   response.end(JSON.stringify({ error: error.message }));
 }
 
-async function createViteDevServer(server) {
+async function createViteDevServer(server: http.Server): Promise<import("vite").ViteDevServer> {
   const { createServer } = await import("vite");
   process.env.MAPANIM_VITE_MIDDLEWARE = "1";
 
   return createServer({
-    configFile: path.join(rootDir, "vite.config.js"),
+    configFile: path.join(rootDir, "vite.config.ts"),
     server: {
       middlewareMode: true,
       hmr: {
@@ -221,15 +222,15 @@ async function createViteDevServer(server) {
   });
 }
 
-async function handOffToVite(vite, request, response) {
+async function handOffToVite(vite: import("vite").ViteDevServer | null, request: http.IncomingMessage, response: http.ServerResponse): Promise<boolean> {
   if (!vite) {
     return false;
   }
 
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     let settled = false;
 
-    const finish = (error) => {
+    const finish = (error?: Error | null) => {
       if (settled) {
         return;
       }
@@ -252,15 +253,15 @@ async function handOffToVite(vite, request, response) {
     response.on("finish", onFinish);
     response.on("close", onClose);
 
-    vite.middlewares(request, response, (error) => finish(error));
+    vite.middlewares(request, response, (error?: Error) => finish(error));
   });
 
   return response.writableEnded;
 }
 
-async function handleRequest(request, response, vite) {
+async function handleRequest(request: http.IncomingMessage, response: http.ServerResponse, vite: import("vite").ViteDevServer | null): Promise<void> {
   try {
-    const requested = new URL(request.url, baseUrl ?? "http://127.0.0.1");
+    const requested = new URL(request.url!, baseUrl ?? "http://127.0.0.1");
     const pathname = requested.pathname;
 
     if (pathname.startsWith("/api/")) {
@@ -289,9 +290,9 @@ async function handleRequest(request, response, vite) {
 
     await serveFile(response, path.join(webappDistDir, "index.html"));
   } catch (error) {
-    vite?.ssrFixStacktrace?.(error);
+    (vite as import("vite").ViteDevServer | undefined)?.ssrFixStacktrace?.(error as Error);
     if (!response.headersSent) {
-      sendError(response, error);
+      sendError(response, error as Error);
       return;
     }
 
@@ -299,8 +300,8 @@ async function handleRequest(request, response, vite) {
   }
 }
 
-async function main() {
-  let vite = null;
+async function main(): Promise<void> {
+  let vite: import("vite").ViteDevServer | null = null;
   const server = http.createServer((request, response) => {
     void handleRequest(request, response, vite);
   });
@@ -327,7 +328,7 @@ async function main() {
   });
 }
 
-main().catch((error) => {
+main().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });
