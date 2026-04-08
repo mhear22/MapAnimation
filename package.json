@@ -4,16 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "docker": "node scripts/docker.js",
-    "docker:deploy": "node scripts/docker-deploy.js",
+    "typecheck": "tsc --build",
+    "typecheck:watch": "tsc --build --watch",
+    "typecheck:webapp": "vue-tsc --project tsconfig.webapp.json",
+    "docker": "node --import tsx scripts/docker.ts",
+    "docker:deploy": "node --import tsx scripts/docker-deploy.ts",
     "install:browsers": "playwright install chromium",
+    "build:renderer": "esbuild web/renderer.ts --outfile=web/renderer.js --format=esm --target=es2022",
     "build:webapp": "vite build",
     "dev:webapp": "vite",
-    "dev:server": "node server/index.js",
-    "dev": "node scripts/dev.js",
-    "render": "node scripts/render.js --config ./routes.json",
-    "render:route": "node scripts/render.js",
-    "test": "node --test"
+    "dev:server": "node --import tsx server/index.ts",
+    "dev": "node --import tsx scripts/dev.ts",
+    "render": "node --import tsx scripts/render.ts --config ./routes.json",
+    "render:route": "node --import tsx scripts/render.ts",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "maplibre-gl": "^5.3.0",
@@ -21,7 +25,11 @@
     "vue": "^3.5.22"
   },
   "devDependencies": {
+    "@types/node": "^25.5.2",
     "@vitejs/plugin-vue": "^6.0.1",
-    "vite": "^7.1.12"
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vite": "^7.1.12",
+    "vue-tsc": "^3.2.6"
   }
 }

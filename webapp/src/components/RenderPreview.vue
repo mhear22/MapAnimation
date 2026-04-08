@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from "vue";
-import type { PreparedRoute } from "../../types/index.js";
+
+interface PreparedRoute {
+  [key: string]: unknown;
+}
 
 const props = defineProps({
   route: { type: Object as () => PreparedRoute | null, default: null },
@@ -33,9 +36,9 @@ function onMessage(event: MessageEvent<MessagePayload>): void {
   const payload = event.data;
   if (!payload || payload.namespace !== "mapanim") return;
   if (payload.type === "ready") { ready.value = true; return; }
-  const entry = pending.get(payload.requestId);
+  const entry = payload.requestId ? pending.get(payload.requestId) : undefined;
   if (!entry) return;
-  pending.delete(payload.requestId);
+  pending.delete(payload.requestId!);
   if (payload.type === "command-error") { entry.reject(new Error(payload.message ?? "Unknown error")); return; }
   entry.resolve();
 }

@@ -1,5 +1,32 @@
 <script setup lang="ts">
-import type { SerializedJob } from "../../types/index.js";
+interface RenderProgress {
+  frame?: number;
+  totalFrames?: number;
+  percent?: number | null;
+}
+
+interface JobSummary {
+  startLabel: string;
+  endLabel: string;
+  name: string | null;
+  mode: string;
+  mapType: string;
+}
+
+interface SerializedResult {
+  outputPath: string;
+  outputUrl: string | null;
+}
+
+interface SerializedJob {
+  id: string;
+  status: string;
+  stage: string;
+  error: string | null;
+  progress: RenderProgress | null;
+  summary: JobSummary;
+  result: SerializedResult | null;
+}
 
 defineProps({
   jobs: { type: Array as () => SerializedJob[], required: true }

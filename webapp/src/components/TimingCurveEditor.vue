@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from "vue";
-import type { NormalizedCamera } from "../../types/index.js";
 
-interface TimingCameraLike extends NormalizedCamera {
+interface TimingCameraLike {
+  startZoom: number;
+  endZoom: number;
+  maxAltitude: number;
+  aggressiveness: number;
+  smoothing: number;
   timingCurve?: number;
   timingInverted?: boolean;
 }

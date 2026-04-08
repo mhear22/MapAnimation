@@ -1,16 +1,37 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import type { NormalizedCamera, PreparedRoute } from "../../types/index.js";
 
-interface CameraLike extends NormalizedCamera {
+interface CameraLike {
+  startZoom: number;
+  endZoom: number;
+  maxAltitude: number;
+  aggressiveness: number;
+  smoothing: number;
   timingCurve?: number;
   timingInverted?: boolean;
+}
+
+interface RoutePoint {
+  coords: [number, number];
+}
+
+interface RoutePath {
+  coordinates: [number, number][];
+}
+
+interface RouteLike {
+  width?: number;
+  height?: number;
+  overviewPadding?: number;
+  path?: RoutePath;
+  from?: RoutePoint;
+  to?: RoutePoint;
 }
 
 const props = defineProps({
   camera: { type: Object as () => CameraLike, required: true },
   progress: { type: Number, default: 0 },
-  route: { type: Object as () => PreparedRoute | null, default: null }
+  route: { type: Object as () => RouteLike | null, default: null }
 });
 
 const emit = defineEmits(["update-camera"]);
@@ -165,7 +186,7 @@ const pathData = computed<string>(() => {
   const samples = [];
   const sampleCount = 96;
   for (let index = 0; index < sampleCount; index++) {
-    const progress = sampleCount === 1 ? 0 : index / (sampleCount - 1);
+    const progress = index === 0 ? 0 : index / (sampleCount - 1);
     samples.push(`${index === 0 ? "M" : "L"} ${progressToX(progress)} ${depthToY(sampleFullDepth(progress))}`);
   }
   return samples.join(" ");

@@ -1,5 +1,73 @@
+import type { PreparedRoute } from "../types/route.js";
+
+// --- Types ---
+
+export interface RendererApi {
+  setScene(scene: PreparedRoute): Promise<void>;
+  primeTiles(): Promise<void>;
+  renderFrame(progress: number): Promise<void>;
+}
+
+export interface PathSampler {
+  coordinates: [number, number][];
+  cumulative: number[];
+  total: number;
+}
+
+export interface CameraState {
+  start: { center: [number, number]; zoom: number };
+  overview: { center: [number, number]; zoom: number };
+  end: { center: [number, number]; zoom: number };
+  routePath: PathSampler;
+  cameraPath: PathSampler;
+  aggressiveness: number;
+  timingCurve: number;
+  timingInverted: boolean;
+}
+
+export interface RendererState {
+  map: any;
+  scene: PreparedRoute | null;
+  markers: any[];
+  cameras: CameraState | null;
+  mapType: string | null;
+  lastProgress: number;
+}
+
+interface PostMessagePayload {
+  namespace: "mapanim";
+  type: string;
+  requestId?: string;
+  scene?: PreparedRoute;
+  progress?: number;
+}
+
+interface RendererCamera {
+  startZoom: number;
+  endZoom: number;
+  maxAltitude: number;
+  aggressiveness: number;
+  smoothing: number;
+  peakAltitude?: number;
+  curvePosition?: number;
+  timingCurve?: number;
+  timingInverted?: boolean;
+  cameraSmoothing?: number;
+}
+
+declare global {
+  interface Window {
+    __MAP_RENDERER__?: RendererApi;
+    __MAP_RENDERER_READY__?: boolean;
+    maplibregl: typeof import("maplibre-gl");
+  }
+}
+
+// --- Implementation ---
+
 const { maplibregl } = window;
-const state = {
+
+const state: RendererState = {
   map: null,
   scene: null,
   markers: [],
@@ -7,13 +75,14 @@ const state = {
   mapType: null,
   lastProgress: 0
 };
+
 function buildBaseStyle(mapType = "satellite") {
   if (mapType === "standard") {
     return {
-      version: 8,
+      version: 8 as const,
       sources: {
         carto: {
-          type: "raster",
+          type: "raster" as const,
           tiles: [
             "/tiles/standard/{z}/{x}/{y}"
           ],
@@ -24,17 +93,18 @@ function buildBaseStyle(mapType = "satellite") {
       layers: [
         {
           id: "carto-base",
-          type: "raster",
+          type: "raster" as const,
           source: "carto"
         }
       ]
     };
   }
+
   return {
-    version: 8,
+    version: 8 as const,
     sources: {
       carto: {
-        type: "raster",
+        type: "raster" as const,
         tiles: [
           "/tiles/satellite/{z}/{x}/{y}"
         ],
@@ -45,60 +115,73 @@ function buildBaseStyle(mapType = "satellite") {
     layers: [
       {
         id: "carto-base",
-        type: "raster",
+        type: "raster" as const,
         source: "carto"
       }
     ]
   };
 }
-function createMarker(label, className) {
+
+function createMarker(label: string, className: string): HTMLDivElement {
   const element = document.createElement("div");
   element.className = `route-label ${className}`.trim();
   element.textContent = label;
   return element;
 }
-function easeInOutCubic(value) {
-  return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
+
+function easeInOutCubic(value: number): number {
+  return value < 0.5
+    ? 4 * value * value * value
+    : 1 - Math.pow(-2 * value + 2, 3) / 2;
 }
-function sampleTimingEasing(t, intensity, inverted) {
+
+function sampleTimingEasing(t: number, intensity: number, inverted: boolean): number {
   const linear = t;
   const cubic = easeInOutCubic(t);
   const sign = inverted ? -1 : 1;
   return linear + (cubic - linear) * clamp(intensity, 0, 1) * sign;
 }
-function clamp(value, min, max) {
+
+function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
-function lerp(a, b, t) {
+
+function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
-function lerpPoint(a, b, t) {
+
+function lerpPoint(a: [number, number], b: [number, number], t: number): [number, number] {
   return [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
 }
-function haversineKilometers(a, b) {
+
+function haversineKilometers(a: [number, number], b: [number, number]): number {
   const rad = Math.PI / 180;
   const dLat = (b[1] - a[1]) * rad;
   const dLng = (b[0] - a[0]) * rad;
   const lat1 = a[1] * rad;
   const lat2 = b[1] * rad;
-  const value = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  const value =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   return 6371 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
-function buildLineFeature(scene) {
+
+function buildLineFeature(scene: PreparedRoute) {
   return {
-    type: "Feature",
+    type: "Feature" as const,
     geometry: {
-      type: "LineString",
+      type: "LineString" as const,
       coordinates: scene.path?.coordinates?.length ? scene.path.coordinates : [scene.from.coords, scene.to.coords]
     },
     properties: {}
   };
 }
-function buildPointFeature(location, kind) {
+
+function buildPointFeature(location: { coords: [number, number] }, kind: string) {
   return {
-    type: "Feature",
+    type: "Feature" as const,
     geometry: {
-      type: "Point",
+      type: "Point" as const,
       coordinates: location.coords
     },
     properties: {
@@ -106,28 +189,34 @@ function buildPointFeature(location, kind) {
     }
   };
 }
-function computeBounds(coordinates) {
+
+function computeBounds(coordinates: [number, number][]) {
   const bounds = new maplibregl.LngLatBounds(coordinates[0], coordinates[0]);
   for (const coordinate of coordinates.slice(1)) {
     bounds.extend(coordinate);
   }
   return bounds;
 }
-function midpoint(a, b) {
+
+function midpoint(a: [number, number], b: [number, number]): [number, number] {
   return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
 }
-function toAggressivenessControl(aggressiveness = 50) {
-  return lerp(0.02, 1, clamp(aggressiveness, 0, 100) / 100);
+
+function toAggressivenessControl(aggressiveness = 50): number {
+  return lerp(0.02, 1.0, clamp(aggressiveness, 0, 100) / 100);
 }
-function sampleMirroredBlend(progress, aggressiveness = 50) {
+
+function sampleMirroredBlend(progress: number, aggressiveness = 50): number {
   const t = clamp(progress, 0, 1);
   const control = toAggressivenessControl(aggressiveness);
   return 2 * (1 - t) * t * control + t * t;
 }
-function normalizeWindowRadius(value) {
+
+function normalizeWindowRadius(value: number): number {
   return Math.max(1, Math.round(value));
 }
-function buildPathSampler(coordinates) {
+
+function buildPathSampler(coordinates?: [number, number][]): PathSampler {
   if (!coordinates?.length) {
     return {
       coordinates: [],
@@ -135,70 +224,92 @@ function buildPathSampler(coordinates) {
       total: 0
     };
   }
+
   const cumulative = [0];
   for (let index = 1; index < coordinates.length; index += 1) {
     const segmentLength = haversineKilometers(coordinates[index - 1], coordinates[index]);
     cumulative.push(cumulative[index - 1] + segmentLength);
   }
+
   return {
     coordinates,
     cumulative,
     total: cumulative[cumulative.length - 1]
   };
 }
-function smoothCoordinates(coordinates, passes = 1, radius = 2) {
+
+function smoothCoordinates(coordinates: [number, number][], passes = 1, radius = 2): [number, number][] {
   if (!coordinates?.length || coordinates.length < 3) {
     return coordinates;
   }
-  const smoothed = coordinates.map((coordinate) => [...coordinate]);
+
+  const smoothed: [number, number][] = coordinates.map((coordinate) => [...coordinate]);
   const windowRadius = normalizeWindowRadius(radius);
+
   for (let pass = 0; pass < passes; pass += 1) {
-    const next = smoothed.map((coordinate) => [...coordinate]);
+    const next: [number, number][] = smoothed.map((coordinate) => [...coordinate]);
     for (let index = 1; index < smoothed.length - 1; index += 1) {
       let lngSum = 0;
       let latSum = 0;
       let weightSum = 0;
-      for (let neighbor = Math.max(0, index - windowRadius); neighbor <= Math.min(smoothed.length - 1, index + windowRadius); neighbor += 1) {
+
+      for (
+        let neighbor = Math.max(0, index - windowRadius);
+        neighbor <= Math.min(smoothed.length - 1, index + windowRadius);
+        neighbor += 1
+      ) {
         const distanceFromCenter = Math.abs(neighbor - index);
         const weight = windowRadius + 1 - distanceFromCenter;
         lngSum += smoothed[neighbor][0] * weight;
         latSum += smoothed[neighbor][1] * weight;
         weightSum += weight;
       }
+
       next[index] = [lngSum / weightSum, latSum / weightSum];
     }
+
     next[0] = [...coordinates[0]];
     next[next.length - 1] = [...coordinates[coordinates.length - 1]];
+
     for (let index = 0; index < smoothed.length; index += 1) {
       smoothed[index] = next[index];
     }
   }
+
   return smoothed;
 }
-function buildCameraPathSampler(coordinates, smoothing = 0.9) {
+
+function buildCameraPathSampler(coordinates: [number, number][], smoothing = 0.9): PathSampler {
   const routePath = buildPathSampler(coordinates);
   if (routePath.coordinates.length < 3 || routePath.total === 0) {
     return routePath;
   }
+
   const normalizedSmoothing = clamp(smoothing, 0, 1);
   const sampleCount = Math.round(clamp(24 + routePath.total * 4, 32, 120));
-  const resampled = [];
+  const resampled: [number, number][] = [];
+
   for (let index = 0; index < sampleCount; index += 1) {
     const progress = sampleCount === 1 ? 1 : index / (sampleCount - 1);
     resampled.push(samplePath(routePath, progress));
   }
+
   const passes = Math.round(lerp(1, 10, normalizedSmoothing));
   const radius = lerp(1, 5, normalizedSmoothing);
   return buildPathSampler(smoothCoordinates(resampled, passes, radius));
 }
-function samplePath(path, progress) {
+
+function samplePath(path: PathSampler, progress: number): [number, number] {
   if (!path.coordinates.length) {
     return [0, 0];
   }
+
   if (path.coordinates.length === 1 || path.total === 0) {
     return path.coordinates[0];
   }
+
   const target = path.total * clamp(progress, 0, 1);
+
   for (let index = 1; index < path.cumulative.length; index += 1) {
     if (target <= path.cumulative[index]) {
       const segmentStart = path.cumulative[index - 1];
@@ -207,56 +318,69 @@ function samplePath(path, progress) {
       return lerpPoint(path.coordinates[index - 1], path.coordinates[index], segmentProgress);
     }
   }
+
   return path.coordinates[path.coordinates.length - 1];
 }
-function waitForMapEvent(eventName, timeoutMs = 2500) {
+
+function waitForMapEvent(eventName: string, timeoutMs = 2500): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;
     let timeoutId = 0;
-    const finish = (result) => {
+
+    const finish = (result: boolean) => {
       if (settled) {
         return;
       }
+
       settled = true;
       window.clearTimeout(timeoutId);
-      state.map.off(eventName, onEvent);
+      state.map!.off(eventName, onEvent);
       resolve(result);
     };
+
     const onEvent = () => {
       finish(true);
     };
-    state.map.on(eventName, onEvent);
+
+    state.map!.on(eventName, onEvent);
     timeoutId = window.setTimeout(() => {
       finish(false);
     }, timeoutMs);
   });
 }
-function sleep(milliseconds) {
+
+function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, milliseconds);
   });
 }
-async function waitForIdle(timeoutMs = 2500) {
-  if (state.map.loaded() && state.map.areTilesLoaded()) {
+
+async function waitForIdle(timeoutMs = 2500): Promise<void> {
+  if (state.map!.loaded() && state.map!.areTilesLoaded()) {
     await sleep(120);
     return;
   }
+
   await waitForMapEvent("idle", timeoutMs);
   await sleep(120);
 }
-async function waitForStyleLoad(timeoutMs = 2500) {
-  if (state.map.isStyleLoaded()) {
+
+async function waitForStyleLoad(timeoutMs = 2500): Promise<void> {
+  if (state.map!.isStyleLoaded()) {
     return;
   }
+
   const loaded = await waitForMapEvent("style.load", timeoutMs);
-  if (!loaded && !state.map.isStyleLoaded()) {
+  if (!loaded && !state.map!.isStyleLoaded()) {
     throw new Error("Timed out waiting for the map style to load");
   }
 }
-async function ensureRouteLayers() {
+
+async function ensureRouteLayers(): Promise<void> {
   await waitForStyleLoad();
-  if (!state.map.getSource("route")) {
-    state.map.addSource("route", {
+
+  if (!state.map!.getSource("route")) {
+    state.map!.addSource("route", {
       type: "geojson",
       data: {
         type: "FeatureCollection",
@@ -264,8 +388,9 @@ async function ensureRouteLayers() {
       }
     });
   }
-  if (!state.map.getLayer("route-shadow")) {
-    state.map.addLayer({
+
+  if (!state.map!.getLayer("route-shadow")) {
+    state.map!.addLayer({
       id: "route-shadow",
       type: "line",
       source: "route",
@@ -277,8 +402,9 @@ async function ensureRouteLayers() {
       }
     });
   }
-  if (!state.map.getLayer("route-line")) {
-    state.map.addLayer({
+
+  if (!state.map!.getLayer("route-line")) {
+    state.map!.addLayer({
       id: "route-line",
       type: "line",
       source: "route",
@@ -289,8 +415,9 @@ async function ensureRouteLayers() {
       }
     });
   }
-  if (!state.map.getLayer("route-points")) {
-    state.map.addLayer({
+
+  if (!state.map!.getLayer("route-points")) {
+    state.map!.addLayer({
       id: "route-points",
       type: "circle",
       source: "route",
@@ -310,10 +437,12 @@ async function ensureRouteLayers() {
     });
   }
 }
-async function setupMap() {
+
+async function setupMap(): Promise<void> {
   if (state.map) {
     return;
   }
+
   state.map = new maplibregl.Map({
     container: "map",
     style: buildBaseStyle("satellite"),
@@ -325,30 +454,36 @@ async function setupMap() {
     pitch: 0,
     bearing: 0,
     preserveDrawingBuffer: true
-  });
+  } as any);
+
   await waitForMapEvent("load");
   await ensureRouteLayers();
   state.mapType = "satellite";
+
   await waitForIdle();
 }
-function removeMarkers() {
+
+function removeMarkers(): void {
   for (const marker of state.markers) {
     marker.remove();
   }
+
   state.markers = [];
 }
-async function setScene(scene) {
+
+async function setScene(scene: PreparedRoute): Promise<void> {
   await setupMap();
   const targetMapType = scene.mapType ?? "satellite";
   if (targetMapType !== state.mapType) {
-    state.map.setStyle(buildBaseStyle(targetMapType));
+    state.map!.setStyle(buildBaseStyle(targetMapType));
     state.mapType = targetMapType;
   }
   await ensureRouteLayers();
-  state.map.resize();
+  state.map!.resize();
   removeMarkers();
   state.scene = scene;
-  const routeSource = state.map.getSource("route");
+
+  const routeSource = state.map!.getSource("route");
   routeSource.setData({
     type: "FeatureCollection",
     features: [
@@ -357,15 +492,17 @@ async function setScene(scene) {
       buildPointFeature(scene.to, "end")
     ]
   });
-  const camera = scene.camera;
+
+  const camera = scene.camera as RendererCamera;
   const startZoom = camera.startZoom ?? scene.startZoom ?? 15.8;
   const endZoom = camera.endZoom ?? scene.endZoom ?? startZoom;
-  const routeCoordinates = scene.path?.coordinates?.length >= 2 ? scene.path.coordinates : [scene.from.coords, scene.to.coords];
+  const routeCoordinates =
+    scene.path?.coordinates?.length >= 2 ? scene.path.coordinates : [scene.from.coords, scene.to.coords];
   const bounds = computeBounds(routeCoordinates);
-  const canvas = state.map.getCanvas();
+  const canvas = state.map!.getCanvas();
   const maxPadding = Math.max(24, Math.floor(Math.min(canvas.width || 0, canvas.height || 0) / 4) || 24);
   const paddingValue = clamp(Number(scene.overviewPadding ?? 180), 0, maxPadding);
-  const overviewCamera = state.map.cameraForBounds(bounds, {
+  const overviewCamera = state.map!.cameraForBounds(bounds, {
     padding: {
       top: paddingValue,
       right: paddingValue + 40,
@@ -377,6 +514,7 @@ async function setScene(scene) {
   const closerZoom = Math.max(startZoom, endZoom);
   const requiredZoomOut = Math.max(0, closerZoom - (overviewCamera?.zoom ?? startZoom - 1.6));
   const maxAltitude = clamp(camera.maxAltitude ?? (camera.peakAltitude != null ? 50 + camera.peakAltitude : 100), 50, 150);
+
   state.cameras = {
     start: {
       center: scene.from.coords,
@@ -396,31 +534,40 @@ async function setScene(scene) {
     timingCurve: clamp(camera.timingCurve ?? 50, 0, 100),
     timingInverted: Boolean(camera.timingInverted)
   };
+
   state.markers.push(
     new maplibregl.Marker({
       element: createMarker(scene.from.label, "start"),
       anchor: "bottom-left",
       offset: [12, -18]
-    }).setLngLat(scene.from.coords).addTo(state.map)
+    })
+      .setLngLat(scene.from.coords)
+      .addTo(state.map!)
   );
+
   state.markers.push(
     new maplibregl.Marker({
       element: createMarker(scene.to.label, "end"),
       anchor: "bottom-left",
       offset: [12, -18]
-    }).setLngLat(scene.to.coords).addTo(state.map)
+    })
+      .setLngLat(scene.to.coords)
+      .addTo(state.map!)
   );
-  state.map.jumpTo({
+
+  state.map!.jumpTo({
     center: scene.from.coords,
     zoom: startZoom,
     bearing: 0,
     pitch: 0
   });
+
   await waitForIdle();
 }
-async function primeTiles() {
-  for (const camera of [state.cameras.overview, state.cameras.start, state.cameras.end]) {
-    state.map.jumpTo({
+
+async function primeTiles(): Promise<void> {
+  for (const camera of [state.cameras!.overview, state.cameras!.start, state.cameras!.end]) {
+    state.map!.jumpTo({
       center: camera.center,
       zoom: camera.zoom,
       bearing: 0,
@@ -429,42 +576,54 @@ async function primeTiles() {
     await waitForIdle();
   }
 }
-async function renderFrame(progress) {
+
+async function renderFrame(progress: number): Promise<void> {
   const holdIn = 0.08;
   const holdOut = 0.08;
   const mapped = clamp((progress - holdIn) / (1 - holdIn - holdOut), 0, 1);
-  const eased = sampleTimingEasing(mapped, (state.cameras.timingCurve ?? 50) / 100, state.cameras.timingInverted);
-  const pathCenter = samplePath(state.cameras.cameraPath, 0.5 - 0.5 * Math.cos(eased * Math.PI));
+  const eased = sampleTimingEasing(mapped, (state.cameras!.timingCurve ?? 50) / 100, state.cameras!.timingInverted);
+
+  const pathCenter = samplePath(state.cameras!.cameraPath, 0.5 - 0.5 * Math.cos(eased * Math.PI));
+
   const halfProgress = 1 - Math.abs(mapped - 0.5) * 2;
-  const rawBlend = sampleMirroredBlend(halfProgress, state.cameras.aggressiveness);
+  const rawBlend = sampleMirroredBlend(halfProgress, state.cameras!.aggressiveness);
   const taperPower = 2.5;
   const zoomBlend = 1 - Math.pow(1 - rawBlend, taperPower);
-  const zoomValue = mapped <= 0.5 ? lerp(state.cameras.start.zoom, state.cameras.overview.zoom, zoomBlend) : lerp(state.cameras.overview.zoom, state.cameras.end.zoom, 1 - zoomBlend);
-  state.map.jumpTo({
+  const zoomValue =
+    mapped <= 0.5
+      ? lerp(state.cameras!.start.zoom, state.cameras!.overview.zoom, zoomBlend)
+      : lerp(state.cameras!.overview.zoom, state.cameras!.end.zoom, 1 - zoomBlend);
+
+  state.map!.jumpTo({
     center: pathCenter,
     zoom: zoomValue,
     bearing: 0,
     pitch: 0
   });
+
   await sleep(16);
-  await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   state.lastProgress = progress;
 }
-const rendererApi = {
+
+const rendererApi: RendererApi = {
   setScene,
   primeTiles,
   renderFrame
 };
-async function handleMessage(event) {
+
+async function handleMessage(event: MessageEvent<PostMessagePayload>): Promise<void> {
   const payload = event.data;
   if (!payload || payload.namespace !== "mapanim") {
     return;
   }
+
   const { requestId, type } = payload;
+
   try {
     switch (type) {
       case "set-scene":
-        await rendererApi.setScene(payload.scene);
+        await rendererApi.setScene(payload.scene!);
         break;
       case "prime-tiles":
         await rendererApi.primeTiles();
@@ -475,9 +634,10 @@ async function handleMessage(event) {
       default:
         throw new Error(`Unknown renderer command "${type}"`);
     }
+
     const origin = event.origin || "*";
     if (event.source) {
-      event.source.postMessage(
+      (event.source as Window).postMessage(
         {
           namespace: "mapanim",
           type: "command-complete",
@@ -486,10 +646,10 @@ async function handleMessage(event) {
         origin
       );
     }
-  } catch (error) {
+  } catch (error: any) {
     const origin = event.origin || "*";
     if (event.source) {
-      event.source.postMessage(
+      (event.source as Window).postMessage(
         {
           namespace: "mapanim",
           type: "command-error",
@@ -501,11 +661,14 @@ async function handleMessage(event) {
     }
   }
 }
-window.addEventListener("message", (event) => {
+
+window.addEventListener("message", (event: MessageEvent<PostMessagePayload>) => {
   void handleMessage(event);
 });
+
 window.__MAP_RENDERER__ = rendererApi;
 window.__MAP_RENDERER_READY__ = true;
+
 if (window.parent && window.parent !== window) {
   window.parent.postMessage(
     {

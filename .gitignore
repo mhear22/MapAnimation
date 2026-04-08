@@ -3,6 +3,7 @@
 
 # Build output
 /webapp/dist/
+/web/renderer.js
 
 # Generated renders and local presets
 /output/

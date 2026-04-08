@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "allowJs": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "rootDir": "."
+  },
+  "include": [
+    "lib/**/*.ts",
+    "lib/**/*.js",
+    "server/**/*.ts",
+    "server/**/*.js",
+    "scripts/**/*.ts",
+    "scripts/**/*.js",
+    "tests/**/*.ts",
+    "tests/**/*.js",
+    "types/**/*.ts"
+  ],
+  "exclude": ["node_modules", "webapp", "web"]
+}

@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { ProviderSearchResult } from "../../types/index.js";
+
+interface ProviderSearchResult {
+  id: string;
+  provider: string;
+  label: string;
+  query: string;
+  coords: [number, number];
+}
 
 const props = defineProps({
   label: { type: String, required: true },

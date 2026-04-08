@@ -4,8 +4,94 @@ import CurveEditor from "./components/CurveEditor.vue";
 import TimingCurveEditor from "./components/TimingCurveEditor.vue";
 import RenderPreview from "./components/RenderPreview.vue";
 import SearchField from "./components/SearchField.vue";
-import type { ProviderSearchResult, PreparedRoute, SerializedJob, PresetItem } from "../../types/index.js";
-import type { RouteConfig } from "../../types/index.js";
+
+interface ProviderSearchResult {
+  id: string;
+  provider: string;
+  label: string;
+  query: string;
+  coords: [number, number];
+}
+
+interface RoutedPath {
+  coordinates: [number, number][];
+  distanceMeters: number | null;
+}
+
+interface PreparedRoute {
+  id: string;
+  from?: { label?: string; query?: string };
+  to?: { label?: string; query?: string };
+  start?: { label?: string; query?: string };
+  end?: { label?: string; query?: string };
+  path?: RoutedPath;
+  width?: number;
+  height?: number;
+  [key: string]: unknown;
+}
+
+interface RenderProgress {
+  frame?: number;
+  totalFrames?: number;
+  percent?: number | null;
+}
+
+interface JobSummary {
+  name: string | null;
+  startLabel: string;
+  endLabel: string;
+  mode: string;
+  mapType: string;
+}
+
+interface SerializedResult {
+  outputUrl: string | null;
+}
+
+interface SerializedJob {
+  id: string;
+  status: string;
+  stage: string;
+  error: string | null;
+  progress: RenderProgress | null;
+  summary: JobSummary;
+  result: SerializedResult | null;
+}
+
+interface PresetItem {
+  id: string;
+  source: string;
+  name: string;
+}
+
+interface LocationSpec {
+  label?: string;
+  query?: string;
+  coords?: [number, number];
+}
+
+interface CameraConfig {
+  startZoom?: number;
+  endZoom?: number;
+  maxAltitude?: number;
+  peakAltitude?: number;
+  aggressiveness?: number;
+  curvePosition?: number;
+  smoothing?: number;
+  timingCurve?: number;
+  timingInverted?: boolean;
+}
+
+interface RouteConfig {
+  id?: string;
+  name?: string;
+  start?: LocationSpec;
+  end?: LocationSpec;
+  from?: LocationSpec;
+  to?: LocationSpec;
+  path?: unknown;
+  camera?: CameraConfig;
+}
 
 interface FormLocation {
   label: string;
@@ -125,7 +211,7 @@ const darkMode = ref(localStorage.getItem("theme") !== "light");
 watch(darkMode, (v: boolean) => {
   document.documentElement.setAttribute("data-theme", v ? "dark" : "light");
   localStorage.setItem("theme", v ? "dark" : "light");
-  const meta = document.querySelector('meta[name="theme-color"]');
+  const meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
   if (meta) meta.content = v ? "#0e1117" : "#ffffff";
 }, { immediate: true });
 
