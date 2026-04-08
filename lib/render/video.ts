@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { chromium, type Browser, type Page } from "playwright";
@@ -7,68 +6,11 @@ import { ensureDir, sleep } from "../utils.js";
 import type { RouteConfig, PreparedRoute, RenderProgress, RenderResult } from "../../types/index.js";
 import type { ProviderRegistry, RendererWindow } from "../../types/index.js";
 
-interface FfmpegProgressOptions {
-  cwd: string;
-  durationSeconds: number;
-  onProgress?: (progress: Partial<RenderProgress>) => void;
-}
-
 interface RenderRouteToVideoOptions {
   rootDir: string;
   renderBaseUrl: string;
   providerRegistry?: ProviderRegistry;
   onProgress?: (progress: Partial<RenderProgress>) => void;
-}
-
-async function runFfmpegWithProgress(
-  args: string[],
-  { cwd, durationSeconds, onProgress }: FfmpegProgressOptions
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const child: ChildProcess = spawn("ffmpeg", args, { cwd });
-
-    let buffer = "";
-
-    child.stdout!.on("data", (chunk: Buffer) => {
-      buffer += chunk.toString();
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        const [key, rawValue] = line.split("=");
-        if (!key) {
-          continue;
-        }
-
-        if (key === "out_time_ms" || key === "out_time_us") {
-          const value = Number(rawValue || 0);
-          if (!Number.isFinite(value) || value <= 0) {
-            continue;
-          }
-          const seconds = value / 1_000_000;
-          const percent = durationSeconds > 0 ? Math.min(100, (seconds / durationSeconds) * 100) : null;
-          onProgress?.({
-            stage: "encoding_video",
-            seconds,
-            durationSeconds,
-            percent
-          });
-        }
-      }
-    });
-
-    child.stderr!.on("data", () => {});
-    child.on("exit", (code: number | null) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-
-      reject(new Error(`ffmpeg exited with code ${code}`));
-    });
-
-    child.on("error", reject);
-  });
 }
 
 async function ensureOutputDir(rootDir: string, filePath: string): Promise<void> {
@@ -85,8 +27,6 @@ export async function renderRouteToVideo(
     providerRegistry,
     onProgress
   } = options;
-  const tmpDir = path.join(rootDir, ".tmp");
-  await ensureDir(tmpDir);
 
   onProgress?.({ stage: "preparing" });
   const route = await prepareRoute(
@@ -96,7 +36,6 @@ export async function renderRouteToVideo(
   route.output = buildOutputPath(routeConfig);
 
   let browser: Browser | undefined;
-  const frameDir = path.join(tmpDir, route.id);
 
   try {
     browser = await chromium.launch();
@@ -134,8 +73,37 @@ export async function renderRouteToVideo(
     const durationSeconds = Number(route.durationSeconds ?? 8);
     const totalFrames = Math.max(2, Math.round(fps * durationSeconds));
 
-    await fs.rm(frameDir, { recursive: true, force: true });
-    await ensureDir(frameDir);
+    const output = buildOutputPath(route);
+    route.output = output;
+    await ensureOutputDir(rootDir, output);
+    const outputPath = path.resolve(rootDir, output);
+
+    const ffmpegArgs = [
+      "-y",
+      "-f", "image2pipe",
+      "-framerate", String(fps),
+      "-i", "pipe:0",
+      "-c:v", "libx264",
+      "-pix_fmt", "yuv420p",
+      "-movflags", "+faststart",
+      outputPath
+    ];
+
+    const ffmpegProcess: ChildProcess = spawn("ffmpeg", ffmpegArgs, { cwd: rootDir });
+    const ffmpegStdin = ffmpegProcess.stdin!;
+    ffmpegStdin.on("error", () => {});
+    ffmpegProcess.stdout!.on("data", () => {});
+    ffmpegProcess.stderr!.on("data", () => {});
+
+    let ffmpegExitCode: number | null = null;
+    let ffmpegExited = false;
+
+    ffmpegProcess.on("exit", (code: number | null) => {
+      ffmpegExitCode = code;
+      ffmpegExited = true;
+    });
+
+    onProgress?.({ stage: "capturing_frames", percent: 0 });
 
     for (let frame = 0; frame < totalFrames; frame += 1) {
       const progress = totalFrames === 1 ? 1 : frame / (totalFrames - 1);
@@ -148,9 +116,27 @@ export async function renderRouteToVideo(
 
         await renderer.renderFrame(value);
       }, progress);
-      await page.screenshot({
-        path: path.join(frameDir, `frame-${String(frame).padStart(5, "0")}.png`)
-      });
+
+      const buffer = await page.screenshot({ type: "jpeg", quality: 92 });
+
+      if (ffmpegExited) {
+        throw new Error(`ffmpeg exited prematurely with code ${ffmpegExitCode}`);
+      }
+
+      const drained = ffmpegStdin.write(buffer);
+      if (!drained) {
+        await new Promise<void>((resolve) => {
+          const onDrain = () => { cleanup(); resolve(); };
+          const onExit = () => { cleanup(); resolve(); };
+          const cleanup = () => {
+            ffmpegStdin.removeListener("drain", onDrain);
+            ffmpegProcess.removeListener("exit", onExit);
+          };
+          ffmpegStdin.once("drain", onDrain);
+          ffmpegProcess.once("exit", onExit);
+        });
+      }
+
       onProgress?.({
         stage: "capturing_frames",
         frame: frame + 1,
@@ -160,31 +146,27 @@ export async function renderRouteToVideo(
     }
 
     onProgress?.({ stage: "encoding_video", percent: 0 });
-    const output = buildOutputPath(route);
-    route.output = output;
-    await ensureOutputDir(rootDir, output);
-    const outputPath = path.resolve(rootDir, output);
-    const args = [
-      "-y",
-      "-framerate",
-      String(fps),
-      "-i",
-      path.join(frameDir, "frame-%05d.png"),
-      "-c:v",
-      "libx264",
-      "-pix_fmt",
-      "yuv420p",
-      "-movflags",
-      "+faststart",
-      "-progress",
-      "pipe:1",
-      "-nostats",
-      outputPath
-    ];
-    await runFfmpegWithProgress(args, {
-      cwd: rootDir,
-      durationSeconds,
-      ...(onProgress ? { onProgress } : {})
+    ffmpegStdin.end();
+
+    await new Promise<void>((resolve, reject) => {
+      if (ffmpegExited) {
+        if (ffmpegExitCode === 0) {
+          resolve();
+        } else {
+          reject(new Error(`ffmpeg exited with code ${ffmpegExitCode}`));
+        }
+        return;
+      }
+
+      ffmpegProcess.on("exit", (code: number | null) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`ffmpeg exited with code ${code}`));
+        }
+      });
+
+      ffmpegProcess.on("error", reject);
     });
 
     onProgress?.({

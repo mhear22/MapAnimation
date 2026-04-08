@@ -563,7 +563,6 @@ async function renderFrame(progress) {
       ]
     });
   }
-  await sleep(16);
   await new Promise((resolve) => requestAnimationFrame(() => resolve()));
   state.lastProgress = progress;
 }

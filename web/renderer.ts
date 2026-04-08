@@ -715,7 +715,6 @@ async function renderFrame(progress: number): Promise<void> {
     });
   }
 
-  await sleep(16);
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   state.lastProgress = progress;
 }

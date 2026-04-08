@@ -21,10 +21,11 @@ RUN npm test \
     && npm run build:renderer \
     && npm run build:webapp \
     && npm prune --omit=dev \
+    && npm install tsx \
     && npm cache clean --force
 
 ENV NODE_ENV=production
 
 EXPOSE 5173
 
-CMD ["node", "--experimental-strip-types", "server/index.ts"]
+CMD ["node", "--import", "tsx", "server/index.ts"]
