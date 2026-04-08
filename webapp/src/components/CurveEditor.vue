@@ -1,18 +1,24 @@
-<script setup>
+<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import type { NormalizedCamera, PreparedRoute } from "../../types/index.js";
+
+interface CameraLike extends NormalizedCamera {
+  timingCurve?: number;
+  timingInverted?: boolean;
+}
 
 const props = defineProps({
-  camera: { type: Object, required: true },
+  camera: { type: Object as () => CameraLike, required: true },
   progress: { type: Number, default: 0 },
-  route: { type: Object, default: null }
+  route: { type: Object as () => PreparedRoute | null, default: null }
 });
 
 const emit = defineEmits(["update-camera"]);
 
-const editField = ref(null);
-const startZoomInput = ref(null);
-const endZoomInput = ref(null);
-const maxAltitudeInput = ref(null);
+const editField = ref<string | null>(null);
+const startZoomInput = ref<HTMLInputElement | null>(null);
+const endZoomInput = ref<HTMLInputElement | null>(null);
+const maxAltitudeInput = ref<HTMLInputElement | null>(null);
 
 watch(editField, async (field) => {
   if (!field) return;
@@ -22,17 +28,17 @@ watch(editField, async (field) => {
   if (field === "maxAltitude" && maxAltitudeInput.value) maxAltitudeInput.value.focus();
 });
 
-function commitZoom(field, event) {
-  const value = clamp(parseFloat(event.target.value) || 3, minZoom, maxZoom);
+function commitZoom(field: "startZoom" | "endZoom", event: Event): void {
+  const value = clamp(parseFloat((event.target as HTMLInputElement).value) || 3, minZoom, maxZoom);
   updateCamera({ [field]: value });
 }
 
-function commitAlt(event) {
-  const value = clamp(Math.round(parseFloat(event.target.value) || 100), 50, 150);
+function commitAlt(event: Event): void {
+  const value = clamp(Math.round(parseFloat((event.target as HTMLInputElement).value) || 100), 50, 150);
   updateCamera({ maxAltitude: value });
 }
 
-function finishEdit(field, event) {
+function finishEdit(field: string, event: Event): void {
   if (field === "startZoom") commitZoom("startZoom", event);
   else if (field === "endZoom") commitZoom("endZoom", event);
   else if (field === "maxAltitude") commitAlt(event);
@@ -49,36 +55,36 @@ const mercatorTileSize = 512;
 const holdIn = 0.08;
 const holdOut = 0.08;
 const margin = { top: 22, right: 18, bottom: 32, left: 24 };
-const dragState = ref(null);
-const svgRef = ref(null);
+const dragState = ref<string | null>(null);
+const svgRef = ref<SVGSVGElement | null>(null);
 
-function clamp(value, min, max) { return Math.min(Math.max(value, min), max); }
-function lerp(a, b, t) { return a + (b - a) * t; }
-function mapRange(value, inMin, inMax, outMin, outMax) {
+function clamp(value: number, min: number, max: number): number { return Math.min(Math.max(value, min), max); }
+function lerp(a: number, b: number, t: number): number { return a + (b - a) * t; }
+function mapRange(value: number, inMin: number, inMax: number, outMin: number, outMax: number): number {
   const ratio = (value - inMin) / (inMax - inMin || 1);
   return outMin + ratio * (outMax - outMin);
 }
-function toRadians(value) { return (value * Math.PI) / 180; }
+function toRadians(value: number): number { return (value * Math.PI) / 180; }
 
-function depthToY(depth) { return mapRange(clamp(depth, 0, 1), 0, 1, margin.top, height - margin.bottom); }
-function progressToX(progress) { return mapRange(clamp(progress, 0, 1), 0, 1, margin.left, width - margin.right); }
-function xToProgress(x) { return mapRange(clamp(x, margin.left, width - margin.right), margin.left, width - margin.right, 0, 1); }
+function depthToY(depth: number): number { return mapRange(clamp(depth, 0, 1), 0, 1, margin.top, height - margin.bottom); }
+function progressToX(progress: number): number { return mapRange(clamp(progress, 0, 1), 0, 1, margin.left, width - margin.right); }
+function xToProgress(x: number): number { return mapRange(clamp(x, margin.left, width - margin.right), margin.left, width - margin.right, 0, 1); }
 
-function toAggressivenessControl(aggressiveness = 50) {
+function toAggressivenessControl(aggressiveness: number = 50): number {
   return lerp(minAggressivenessControl, maxAggressivenessControl, clamp(aggressiveness, 0, 100) / 100);
 }
 
-function controlToAggressiveness(control) {
+function controlToAggressiveness(control: number): number {
   return Math.round(mapRange(clamp(control, minAggressivenessControl, maxAggressivenessControl), minAggressivenessControl, maxAggressivenessControl, 0, 100));
 }
 
-function sampleMirroredBlend(progress, aggressiveness = 50) {
+function sampleMirroredBlend(progress: number, aggressiveness: number = 50): number {
   const t = clamp(progress, 0, 1);
   const control = toAggressivenessControl(aggressiveness);
   return 2 * (1 - t) * t * control + t * t;
 }
 
-function projectMercator([lng, lat]) {
+function projectMercator([lng, lat]: [number, number]): { x: number; y: number } {
   const sinLat = clamp(Math.sin(toRadians(lat)), -0.9999, 0.9999);
   return {
     x: (lng + 180) / 360,
@@ -86,7 +92,7 @@ function projectMercator([lng, lat]) {
   };
 }
 
-function fitBoundsZoom(coordinates, viewportWidth, viewportHeight, maxZoomValue) {
+function fitBoundsZoom(coordinates: [number, number][], viewportWidth: number, viewportHeight: number, maxZoomValue: number): number {
   if (!coordinates?.length) return maxZoomValue;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const coordinate of coordinates) {
@@ -101,18 +107,18 @@ function fitBoundsZoom(coordinates, viewportWidth, viewportHeight, maxZoomValue)
   return clamp(Math.min(zoomX, zoomY, maxZoomValue), minZoom, maxZoom);
 }
 
-const routeCoordinates = computed(() => {
+const routeCoordinates = computed<[number, number][]>(() => {
   if (props.route?.path?.coordinates?.length >= 2) return props.route.path.coordinates;
   if (props.route?.from?.coords && props.route?.to?.coords) return [props.route.from.coords, props.route.to.coords];
   return [];
 });
 
-const startZoom = computed(() => clamp(Number(props.camera.startZoom ?? 15.8), minZoom, maxZoom));
-const endZoom = computed(() => clamp(Number(props.camera.endZoom ?? startZoom.value), minZoom, maxZoom));
-const maxAltitude = computed(() => clamp(Number(props.camera.maxAltitude ?? 100), 50, 150));
-const aggressiveness = computed(() => clamp(Number(props.camera.aggressiveness ?? 50), 0, 100));
+const startZoom = computed<number>(() => clamp(Number(props.camera.startZoom ?? 15.8), minZoom, maxZoom));
+const endZoom = computed<number>(() => clamp(Number(props.camera.endZoom ?? startZoom.value), minZoom, maxZoom));
+const maxAltitude = computed<number>(() => clamp(Number(props.camera.maxAltitude ?? 100), 50, 150));
+const aggressiveness = computed<number>(() => clamp(Number(props.camera.aggressiveness ?? 50), 0, 100));
 
-const baseOverviewZoom = computed(() => {
+const baseOverviewZoom = computed<number>(() => {
   const fallbackZoom = Math.max(minZoom, Math.max(startZoom.value, endZoom.value) - 1.6);
   if (!routeCoordinates.value.length) return fallbackZoom;
   const sceneWidth = Number(props.route?.width ?? 1920);
@@ -124,7 +130,7 @@ const baseOverviewZoom = computed(() => {
   return fitBoundsZoom(routeCoordinates.value, viewportWidth, viewportHeight, Math.max(startZoom.value, endZoom.value) - 0.8);
 });
 
-const peakZoom = computed(() => {
+const peakZoom = computed<number>(() => {
   const closerZoom = Math.max(startZoom.value, endZoom.value);
   const requiredZoomOut = Math.max(0, closerZoom - baseOverviewZoom.value);
   return clamp(closerZoom - requiredZoomOut * (maxAltitude.value / 100), minZoom, maxZoom);
@@ -132,30 +138,30 @@ const peakZoom = computed(() => {
 
 const taperPower = 2.5;
 
-function sampleFullDepth(progress) {
+function sampleFullDepth(progress: number): number {
   const mapped = clamp(progress, 0, 1);
   const halfProgress = 1 - Math.abs(mapped - 0.5) * 2;
   const rawBlend = sampleMirroredBlend(halfProgress, aggressiveness.value);
   return 1 - Math.pow(1 - rawBlend, taperPower);
 }
 
-const startPoint = computed(() => ({ x: progressToX(0), y: depthToY(0) }));
-const peakPoint = computed(() => ({ x: progressToX(0.5), y: depthToY(1) }));
-const endPoint = computed(() => ({ x: progressToX(1), y: depthToY(0) }));
-const handlePoint = computed(() => {
+const startPoint = computed<{ x: number; y: number }>(() => ({ x: progressToX(0), y: depthToY(0) }));
+const peakPoint = computed<{ x: number; y: number }>(() => ({ x: progressToX(0.5), y: depthToY(1) }));
+const endPoint = computed<{ x: number; y: number }>(() => ({ x: progressToX(1), y: depthToY(0) }));
+const handlePoint = computed<{ x: number; y: number }>(() => {
   return { x: progressToX(0.25), y: depthToY(sampleFullDepth(0.25)) };
 });
 
-const currentMapped = computed(() => {
+const currentMapped = computed<number>(() => {
   return clamp((props.progress - holdIn) / (1 - holdIn - holdOut), 0, 1);
 });
 
-const currentPoint = computed(() => ({
+const currentPoint = computed<{ x: number; y: number }>(() => ({
   x: progressToX(currentMapped.value),
   y: depthToY(sampleFullDepth(currentMapped.value))
 }));
 
-const pathData = computed(() => {
+const pathData = computed<string>(() => {
   const samples = [];
   const sampleCount = 96;
   for (let index = 0; index < sampleCount; index++) {
@@ -165,7 +171,7 @@ const pathData = computed(() => {
   return samples.join(" ");
 });
 
-const gridLines = computed(() => {
+const gridLines = computed<number[]>(() => {
   const values = [];
   for (let index = 0; index < 5; index++) {
     values.push(margin.top + (index / 4) * (height - margin.top - margin.bottom));
@@ -173,14 +179,14 @@ const gridLines = computed(() => {
   return values;
 });
 
-function updateCamera(nextValues) { emit("update-camera", { ...props.camera, ...nextValues }); }
+function updateCamera(nextValues: Partial<CameraLike>): void { emit("update-camera", { ...props.camera, ...nextValues }); }
 
-function getLocalPoint(event) {
+function getLocalPoint(event: PointerEvent): { x: number; y: number } {
   const bounds = svgRef.value?.getBoundingClientRect();
   return { x: event.clientX - (bounds?.left ?? 0), y: event.clientY - (bounds?.top ?? 0) };
 }
 
-function onPointerMove(event) {
+function onPointerMove(event: PointerEvent): void {
   if (!dragState.value) return;
   const point = getLocalPoint(event);
   const fullProgress = xToProgress(point.x);
@@ -195,8 +201,8 @@ function onPointerMove(event) {
   updateCamera({ aggressiveness: controlToAggressiveness(control) });
 }
 
-function stopDrag() { dragState.value = null; }
-function startDrag(event) { dragState.value = "handle"; onPointerMove(event); }
+function stopDrag(): void { dragState.value = null; }
+function startDrag(event: PointerEvent): void { dragState.value = "handle"; onPointerMove(event); }
 
 window.addEventListener("pointermove", onPointerMove);
 window.addEventListener("pointerup", stopDrag);
