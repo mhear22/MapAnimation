@@ -93,7 +93,7 @@ function broadcastJobs(queue: ReturnType<typeof createRenderQueue>): void {
 }
 
 const queue = createRenderQueue({
-  worker: async (payload: { route: RouteConfig }, emitProgress: (progress: RenderProgress) => void) =>
+  worker: async (payload: { route: RouteConfig }, emitProgress: (progress: Partial<RenderProgress>) => void) =>
     renderRouteToVideo(payload.route, {
       rootDir,
       renderBaseUrl: `${baseUrl}/render/`,

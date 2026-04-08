@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { spawnSync, type SpawnSyncOptionsWithStringIO, type SpawnSyncReturns } from "node:child_process";
+import { spawnSync, type SpawnSyncOptions, type SpawnSyncReturns } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,7 +18,7 @@ function fail(message: string): never {
 
 function ensureSuccess(command: string, result: SpawnSyncReturns<string | Buffer>): void {
   if (result.error) {
-    if (result.error.code === "ENOENT") {
+    if ((result.error as NodeJS.ErrnoException).code === "ENOENT") {
       fail(`Required command not found: ${command}`);
     }
 
@@ -33,8 +33,8 @@ function ensureSuccess(command: string, result: SpawnSyncReturns<string | Buffer
 export function run(
   command: string,
   args: readonly string[],
-  options: SpawnSyncOptionsWithStringIO = {}
-): SpawnSyncReturns<Buffer> {
+  options: SpawnSyncOptions = {}
+): SpawnSyncReturns<string | Buffer> {
   const result = spawnSync(command, args, {
     cwd: rootDir,
     stdio: "inherit",
@@ -42,7 +42,7 @@ export function run(
   });
 
   ensureSuccess(command, result);
-  return result as SpawnSyncReturns<Buffer>;
+  return result;
 }
 
 export function capture(command: string, args: readonly string[]): string {
@@ -53,7 +53,7 @@ export function capture(command: string, args: readonly string[]): string {
   });
 
   ensureSuccess(command, result);
-  return (result as SpawnSyncReturns<string>).stdout.trim();
+  return (result.stdout as string).trim();
 }
 
 function hasCommand(command: string): boolean {
