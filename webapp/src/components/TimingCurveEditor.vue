@@ -121,16 +121,8 @@ onBeforeUnmount(() => {
   <div class="timing-editor">
     <div class="curve-summary">
       <div class="curve-summary-item">
-        <div class="label">Start</div>
-        <div class="value">0%</div>
-      </div>
-      <div class="curve-summary-item">
         <div class="label">Easing</div>
         <div class="value">{{ curveLabel }}</div>
-      </div>
-      <div class="curve-summary-item">
-        <div class="label">End</div>
-        <div class="value">100%</div>
       </div>
       <button
         class="btn btn-sm curve-invert-btn"

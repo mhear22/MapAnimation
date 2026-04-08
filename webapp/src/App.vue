@@ -531,22 +531,18 @@ onBeforeUnmount(() => {
             @update-camera="route.camera = $event"
           />
           <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
-            <div class="field-row">
-              <label class="field">
-                <span class="field-label">Duration (s)</span>
-                <input v-model.number="route.durationSeconds" class="text-input" type="number" min="4" max="20" step="0.5" />
-              </label>
-            </div>
-            <div class="field-row">
-              <label class="field">
-                <span class="field-label">Smoothing</span>
-                <input v-model.number="route.camera.smoothing" class="text-input" type="number" min="0" max="1" step="0.01" />
-              </label>
-              <label class="field">
-                <span class="field-label">Lerp aggressiveness</span>
-                <input v-model.number="route.camera.aggressiveness" class="text-input" type="number" min="0" max="100" step="1" />
-              </label>
-            </div>
+            <label class="field">
+              <span class="field-label">Duration (s)</span>
+              <input v-model.number="route.durationSeconds" class="text-input" type="number" min="4" max="20" step="0.5" />
+            </label>
+            <label class="field">
+              <span class="field-label">Smoothing</span>
+              <input v-model.number="route.camera.smoothing" class="text-input" type="number" min="0" max="1" step="0.01" />
+            </label>
+            <label class="field">
+              <span class="field-label">Lerp aggressiveness</span>
+              <input v-model.number="route.camera.aggressiveness" class="text-input" type="number" min="0" max="100" step="1" />
+            </label>
           </div>
         </div>
       </div>
