@@ -4,9 +4,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { buildFlightPath, loadRoutes, normalizeCamera, prepareRoute } from "../lib/routes.js";
+import type { NormalizedCamera, PreparedRoute, ProviderRegistry, RouteConfig } from "../types/index.js";
 
 test("normalizeCamera applies defaults and clamps values", () => {
-  const camera = normalizeCamera(
+  const camera: NormalizedCamera = normalizeCamera(
     {
       startZoom: 12.4,
       maxAltitude: 220,
@@ -24,7 +25,7 @@ test("normalizeCamera applies defaults and clamps values", () => {
 });
 
 test("normalizeCamera maps legacy fields to the new camera model", () => {
-  const camera = normalizeCamera(
+  const camera: NormalizedCamera = normalizeCamera(
     {
       peakAltitude: 72,
       curvePosition: 61
@@ -37,26 +38,32 @@ test("normalizeCamera maps legacy fields to the new camera model", () => {
 });
 
 test("buildFlightPath keeps endpoints intact", () => {
-  const from = [144.84, -37.67];
-  const to = [151.17, -33.94];
-  const path = buildFlightPath(from, to);
+  const from: [number, number] = [144.84, -37.67];
+  const to: [number, number] = [151.17, -33.94];
+  const flightPath = buildFlightPath(from, to);
 
-  assert.deepEqual(path.coordinates[0], from);
-  assert.deepEqual(path.coordinates[path.coordinates.length - 1], to);
-  assert.equal(path.profile, "flight");
-  assert.ok(path.coordinates.length >= 48);
+  assert.deepEqual(flightPath.coordinates[0], from);
+  assert.deepEqual(flightPath.coordinates[flightPath.coordinates.length - 1], to);
+  assert.equal(flightPath.profile, "flight");
+  assert.ok(flightPath.coordinates.length >= 48);
 });
 
 test("prepareRoute resolves coords and routes via injected provider", async () => {
-  const providerRegistry = {
+  const providerRegistry: ProviderRegistry = {
     defaultProvider: "mock",
     getProvider() {
       return {
-        async geocode(query) {
+        id: "mock",
+        async search() {
+          return [];
+        },
+        async geocode(query: string) {
           return {
+            id: query,
+            provider: "mock",
             label: query,
             query,
-            coords: query.includes("Origin") ? [1, 2] : [3, 4]
+            coords: query.includes("Origin") ? [1, 2] as [number, number] : [3, 4] as [number, number]
           };
         },
         async route() {
@@ -65,17 +72,20 @@ test("prepareRoute resolves coords and routes via injected provider", async () =
               [1, 2],
               [2, 3],
               [3, 4]
-            ],
+            ] as [number, number][],
             distanceMeters: 1500,
             durationSeconds: 420,
             profile: "driving"
           };
         }
       };
+    },
+    listProviders() {
+      return ["mock"];
     }
   };
 
-  const route = await prepareRoute(
+  const route: PreparedRoute = await prepareRoute(
     {
       mode: "driving",
       start: { label: "Origin", query: "Origin" },
@@ -92,15 +102,21 @@ test("prepareRoute resolves coords and routes via injected provider", async () =
 });
 
 test("prepareRoute backfills geocoded labels when the UI only sends queries", async () => {
-  const providerRegistry = {
+  const providerRegistry: ProviderRegistry = {
     defaultProvider: "mock",
     getProvider() {
       return {
-        async geocode(query) {
+        id: "mock",
+        async search() {
+          return [];
+        },
+        async geocode(query: string) {
           return {
+            id: query,
+            provider: "mock",
             label: `${query} label`,
             query: `${query} canonical`,
-            coords: query.includes("Origin") ? [1, 2] : [3, 4]
+            coords: query.includes("Origin") ? [1, 2] as [number, number] : [3, 4] as [number, number]
           };
         },
         async route() {
@@ -109,17 +125,20 @@ test("prepareRoute backfills geocoded labels when the UI only sends queries", as
               [1, 2],
               [2, 3],
               [3, 4]
-            ],
+            ] as [number, number][],
             distanceMeters: 1500,
             durationSeconds: 420,
             profile: "foot"
           };
         }
       };
+    },
+    listProviders() {
+      return ["mock"];
     }
   };
 
-  const route = await prepareRoute(
+  const route: PreparedRoute = await prepareRoute(
     {
       mode: "walking",
       start: { query: "Origin" },
@@ -150,7 +169,7 @@ test("loadRoutes filters config routes by --id", async () => {
       "utf8"
     );
 
-    const routes = await loadRoutes({ config: "./routes.json", id: "second" }, { rootDir });
+    const routes: RouteConfig[] = await loadRoutes({ config: "./routes.json", id: "second" }, { rootDir });
 
     assert.equal(routes.length, 1);
     assert.equal(routes[0].id, "second");
