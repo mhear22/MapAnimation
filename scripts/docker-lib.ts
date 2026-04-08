@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncOptionsWithStringIO, type SpawnSyncReturns } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,12 +11,12 @@ const __dirname = path.dirname(__filename);
 
 export const rootDir = path.resolve(__dirname, "..");
 
-function fail(message) {
+function fail(message: string): never {
   console.error(message);
   process.exit(1);
 }
 
-function ensureSuccess(command, result) {
+function ensureSuccess(command: string, result: SpawnSyncReturns<string | Buffer>): void {
   if (result.error) {
     if (result.error.code === "ENOENT") {
       fail(`Required command not found: ${command}`);
@@ -30,7 +30,11 @@ function ensureSuccess(command, result) {
   }
 }
 
-export function run(command, args, options = {}) {
+export function run(
+  command: string,
+  args: readonly string[],
+  options: SpawnSyncOptionsWithStringIO = {}
+): SpawnSyncReturns<Buffer> {
   const result = spawnSync(command, args, {
     cwd: rootDir,
     stdio: "inherit",
@@ -38,10 +42,10 @@ export function run(command, args, options = {}) {
   });
 
   ensureSuccess(command, result);
-  return result;
+  return result as SpawnSyncReturns<Buffer>;
 }
 
-export function capture(command, args) {
+export function capture(command: string, args: readonly string[]): string {
   const result = spawnSync(command, args, {
     cwd: rootDir,
     encoding: "utf8",
@@ -49,15 +53,15 @@ export function capture(command, args) {
   });
 
   ensureSuccess(command, result);
-  return result.stdout.trim();
+  return (result as SpawnSyncReturns<string>).stdout.trim();
 }
 
-function hasCommand(command) {
+function hasCommand(command: string): boolean {
   const result = spawnSync(command, ["--version"], { stdio: "ignore" });
   return !result.error;
 }
 
-export function resolveContainerEngine() {
+export function resolveContainerEngine(): string {
   if (process.env.MAPANIM_CONTAINER_ENGINE) {
     return process.env.MAPANIM_CONTAINER_ENGINE;
   }
@@ -73,11 +77,11 @@ export function resolveContainerEngine() {
   fail("Neither docker nor podman is installed.");
 }
 
-export function ensureLocalDockerDirs() {
+export function ensureLocalDockerDirs(): void {
   mkdirSync(path.join(rootDir, "output"), { recursive: true });
   mkdirSync(path.join(rootDir, "presets"), { recursive: true });
 }
 
-export function mountPathSuffix(containerEngine) {
+export function mountPathSuffix(containerEngine: string): string {
   return containerEngine === "podman" ? ":Z" : "";
 }
