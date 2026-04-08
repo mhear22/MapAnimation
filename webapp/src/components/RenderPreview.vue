@@ -1,40 +1,55 @@
-<script setup>
+<script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from "vue";
+import type { PreparedRoute } from "../../types/index.js";
 
 const props = defineProps({
-  route: { type: Object, default: null },
+  route: { type: Object as () => PreparedRoute | null, default: null },
   progress: { type: Number, required: true }
 });
 
-const iframeRef = ref(null);
+const iframeRef = ref<HTMLIFrameElement | null>(null);
 const ready = ref(false);
-const pending = new Map();
 
-function createRequestId() {
+interface PendingEntry {
+  resolve: () => void;
+  reject: (reason: Error) => void;
+}
+
+const pending = new Map<string, PendingEntry>();
+
+function createRequestId(): string {
   return `req-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
 }
 
-function onMessage(event) {
+interface MessagePayload {
+  namespace?: string;
+  type?: string;
+  requestId?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
+function onMessage(event: MessageEvent<MessagePayload>): void {
   const payload = event.data;
   if (!payload || payload.namespace !== "mapanim") return;
   if (payload.type === "ready") { ready.value = true; return; }
   const entry = pending.get(payload.requestId);
   if (!entry) return;
   pending.delete(payload.requestId);
-  if (payload.type === "command-error") { entry.reject(new Error(payload.message)); return; }
+  if (payload.type === "command-error") { entry.reject(new Error(payload.message ?? "Unknown error")); return; }
   entry.resolve();
 }
 
-function sendCommand(type, extra = {}) {
+function sendCommand(type: string, extra: Record<string, unknown> = {}): Promise<void> {
   if (!iframeRef.value?.contentWindow) return Promise.resolve();
   const requestId = createRequestId();
   const payload = JSON.parse(JSON.stringify({ namespace: "mapanim", requestId, type, ...toRaw(extra) }));
-  const promise = new Promise((resolve, reject) => { pending.set(requestId, { resolve, reject }); });
+  const promise = new Promise<void>((resolve, reject) => { pending.set(requestId, { resolve, reject }); });
   iframeRef.value.contentWindow.postMessage(payload, window.location.origin);
   return promise;
 }
 
-async function syncScene(scene) {
+async function syncScene(scene: PreparedRoute): Promise<void> {
   await nextTick();
   if (!ready.value || !scene) return;
   await sendCommand("set-scene", { scene });
