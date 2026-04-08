@@ -170,10 +170,12 @@ test("loadRoutes filters config routes by --id", async () => {
     );
 
     const routes: RouteConfig[] = await loadRoutes({ config: "./routes.json", id: "second" }, { rootDir });
+    const [selectedRoute] = routes;
 
     assert.equal(routes.length, 1);
-    assert.equal(routes[0].id, "second");
-    assert.equal(routes[0].durationSeconds, 8);
+    assert.ok(selectedRoute);
+    assert.equal(selectedRoute.id, "second");
+    assert.equal(selectedRoute.durationSeconds, 8);
   } finally {
     await fs.rm(rootDir, { recursive: true, force: true });
   }

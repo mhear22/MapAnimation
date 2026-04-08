@@ -2,6 +2,8 @@ import type { ProviderSearchResult } from "./provider.js";
 import type { RouteConfig, PreparedRoute } from "./route.js";
 import type { SerializedJob } from "./render.js";
 
+export type PresetSource = "preset" | "route";
+
 export interface SearchResponse {
   results: ProviderSearchResult[];
 }
@@ -12,7 +14,7 @@ export interface PreviewResponse {
 
 export interface PresetItem {
   id: string;
-  source: string;
+  source: PresetSource;
   name: string;
   updatedAt: string | null;
 }
@@ -23,7 +25,7 @@ export interface PresetListResponse {
 
 export interface PresetDetail {
   id: string;
-  source: string;
+  source: PresetSource;
   name: string;
   route: RouteConfig;
 }

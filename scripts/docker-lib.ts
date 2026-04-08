@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { spawnSync, type SpawnSyncOptions, type SpawnSyncReturns } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { toError } from "../lib/utils.js";
 
 export const ECR_REPOSITORY = "115136208505.dkr.ecr.ap-southeast-2.amazonaws.com/mapanim";
 export const AWS_REGION = "ap-southeast-2";
@@ -18,11 +19,12 @@ function fail(message: string): never {
 
 function ensureSuccess(command: string, result: SpawnSyncReturns<string | Buffer>): void {
   if (result.error) {
-    if ((result.error as NodeJS.ErrnoException).code === "ENOENT") {
+    const error = toError(result.error) as NodeJS.ErrnoException;
+    if (error.code === "ENOENT") {
       fail(`Required command not found: ${command}`);
     }
 
-    throw result.error;
+    throw error;
   }
 
   if (result.status !== 0) {
@@ -53,7 +55,7 @@ export function capture(command: string, args: readonly string[]): string {
   });
 
   ensureSuccess(command, result);
-  return (result.stdout as string).trim();
+  return String(result.stdout ?? "").trim();
 }
 
 function hasCommand(command: string): boolean {
@@ -62,8 +64,8 @@ function hasCommand(command: string): boolean {
 }
 
 export function resolveContainerEngine(): string {
-  if (process.env.MAPANIM_CONTAINER_ENGINE) {
-    return process.env.MAPANIM_CONTAINER_ENGINE;
+  if (process.env["MAPANIM_CONTAINER_ENGINE"]) {
+    return process.env["MAPANIM_CONTAINER_ENGINE"];
   }
 
   if (hasCommand("docker")) {

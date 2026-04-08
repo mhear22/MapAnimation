@@ -23,6 +23,8 @@ export interface NormalizedCamera {
   maxAltitude: number;
   aggressiveness: number;
   smoothing: number;
+  timingCurve: number;
+  timingInverted: boolean;
 }
 
 export interface RoutedPath {

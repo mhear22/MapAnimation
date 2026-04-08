@@ -4,128 +4,25 @@ import CurveEditor from "./components/CurveEditor.vue";
 import TimingCurveEditor from "./components/TimingCurveEditor.vue";
 import RenderPreview from "./components/RenderPreview.vue";
 import SearchField from "./components/SearchField.vue";
-
-interface ProviderSearchResult {
-  id: string;
-  provider: string;
-  label: string;
-  query: string;
-  coords: [number, number];
-}
-
-interface RoutedPath {
-  coordinates: [number, number][];
-  distanceMeters: number | null;
-}
-
-interface PreparedRoute {
-  id: string;
-  from?: { label?: string; query?: string };
-  to?: { label?: string; query?: string };
-  start?: { label?: string; query?: string };
-  end?: { label?: string; query?: string };
-  path?: RoutedPath;
-  width?: number;
-  height?: number;
-  [key: string]: unknown;
-}
-
-interface RenderProgress {
-  frame?: number;
-  totalFrames?: number;
-  percent?: number | null;
-}
-
-interface JobSummary {
-  name: string | null;
-  startLabel: string;
-  endLabel: string;
-  mode: string;
-  mapType: string;
-}
-
-interface SerializedResult {
-  outputUrl: string | null;
-}
-
-interface SerializedJob {
-  id: string;
-  status: string;
-  stage: string;
-  error: string | null;
-  progress: RenderProgress | null;
-  summary: JobSummary;
-  result: SerializedResult | null;
-}
-
-interface PresetItem {
-  id: string;
-  source: string;
-  name: string;
-}
-
-interface LocationSpec {
-  label?: string;
-  query?: string;
-  coords?: [number, number];
-}
-
-interface CameraConfig {
-  startZoom?: number;
-  endZoom?: number;
-  maxAltitude?: number;
-  peakAltitude?: number;
-  aggressiveness?: number;
-  curvePosition?: number;
-  smoothing?: number;
-  timingCurve?: number;
-  timingInverted?: boolean;
-}
-
-interface RouteConfig {
-  id?: string;
-  name?: string;
-  start?: LocationSpec;
-  end?: LocationSpec;
-  from?: LocationSpec;
-  to?: LocationSpec;
-  path?: unknown;
-  camera?: CameraConfig;
-}
-
-interface FormLocation {
-  label: string;
-  query: string;
-  coords: [number, number] | null;
-}
-
-interface FormCamera {
-  startZoom: number;
-  endZoom: number;
-  maxAltitude: number;
-  aggressiveness: number;
-  smoothing: number;
-  timingCurve: number;
-  timingInverted: boolean;
-}
-
-interface RouteFormData {
-  id: string;
-  name: string;
-  provider: string;
-  mode: string;
-  mapType: string;
-  width: number;
-  height: number;
-  fps: number;
-  durationSeconds: number;
-  overviewPadding: number;
-  output: string;
-  start: FormLocation;
-  end: FormLocation;
-  path: RouteConfig["path"] | null;
-  camera: FormCamera;
-}
+import type {
+  CameraConfig,
+  FormCamera,
+  FormLocation,
+  LocationSpec,
+  PreparedRoute,
+  PresetDetail,
+  PresetItem,
+  PreviewResponse,
+  ProviderSearchResult,
+  RenderJobsResponse,
+  RouteApplyInput,
+  RouteConfig,
+  RouteFormData,
+  SearchKind,
+  SearchResponse,
+  SearchState,
+  SerializedJob
+} from "./types.js";
 
 function createDefaultRoute(): RouteFormData {
   return {
@@ -164,12 +61,64 @@ async function requestJson<T = unknown>(url: string, options?: RequestInit): Pro
   return response.json() as Promise<T>;
 }
 
-function routeForPreview(route: RouteFormData): Record<string, unknown> {
+function toLocationSpec(location: FormLocation): LocationSpec {
+  const payload: LocationSpec = {};
+  if (location.label) {
+    payload.label = location.label;
+  }
+  if (location.query) {
+    payload.query = location.query;
+  }
+  if (location.coords) {
+    payload.coords = location.coords;
+  }
+  return payload;
+}
+
+function toRouteConfig(route: RouteFormData): RouteConfig {
+  const { start, end, path, camera, ...rest } = route;
   return {
-    ...route,
-    start: { ...route.start, coords: route.start.coords ?? undefined },
-    end: { ...route.end, coords: route.end.coords ?? undefined }
+    ...rest,
+    start: toLocationSpec(start),
+    end: toLocationSpec(end),
+    camera: { ...camera },
+    ...(path ? { path } : {})
   };
+}
+
+function normalizeLocationInput(location?: Partial<FormLocation> | RouteConfig["start"]): FormLocation {
+  if (!location) {
+    return { label: "", query: "", coords: null };
+  }
+
+  const coords =
+    Array.isArray(location.coords) && location.coords.length === 2
+      ? [Number(location.coords[0]), Number(location.coords[1])] as [number, number]
+      : null;
+
+  return {
+    label: typeof location.label === "string" ? location.label : "",
+    query: typeof location.query === "string" ? location.query : "",
+    coords
+  };
+}
+
+function setSearchResults(kind: SearchKind, results: ProviderSearchResult[]): void {
+  if (kind === "start") {
+    searchState.startResults = results;
+    return;
+  }
+
+  searchState.endResults = results;
+}
+
+function setSearchLoading(kind: SearchKind, loading: boolean): void {
+  if (kind === "start") {
+    searchState.startLoading = loading;
+    return;
+  }
+
+  searchState.endLoading = loading;
 }
 
 function distanceLabel(route: PreparedRoute | null): string | null {
@@ -190,13 +139,6 @@ const loadModalOpen = ref(false);
 const resetModalOpen = ref(false);
 const presets = ref<PresetItem[]>([]);
 const jobs = ref<SerializedJob[]>([]);
-interface SearchState {
-  startResults: ProviderSearchResult[];
-  endResults: ProviderSearchResult[];
-  startLoading: boolean;
-  endLoading: boolean;
-}
-
 const searchState = reactive<SearchState>({
   startResults: [],
   endResults: [],
@@ -221,6 +163,7 @@ let playStart = 0;
 let playFrom = 0;
 
 let events: EventSource | null = null;
+let visibilityChangeHandler: (() => void) | null = null;
 let startSearchTimer: ReturnType<typeof setTimeout> | undefined;
 let endSearchTimer: ReturnType<typeof setTimeout> | undefined;
 let previewTimer: ReturnType<typeof setTimeout> | undefined;
@@ -292,7 +235,8 @@ function toggleQueue(): void {
   queueOpen.value = !queueOpen.value;
 }
 
-const activeJobCount = computed<number>(() => jobs.value.filter(j => j.status === "pending" || j.status === "processing").length);
+const activeRenderStatuses = new Set<SerializedJob["status"]>(["queued", "running"]);
+const activeJobCount = computed<number>(() => jobs.value.filter((job) => activeRenderStatuses.has(job.status)).length);
 
 watch(activeJobCount, (count: number) => {
   document.title = count ? `(${count}) ${baseTitle}` : baseTitle;
@@ -304,16 +248,16 @@ async function loadPresets(): Promise<void> {
 }
 
 async function loadJobs(): Promise<void> {
-  const payload = await requestJson<{ jobs: SerializedJob[] }>("/api/render-jobs");
+  const payload = await requestJson<RenderJobsResponse>("/api/render-jobs");
   jobs.value = payload.jobs;
 }
 
-function applyRoute(nextRoute: Partial<RouteFormData> & Partial<RouteConfig>): void {
+function applyRoute(nextRoute: RouteApplyInput): void {
   const defaults = createDefaultRoute();
-  const nextCamera = nextRoute.camera ?? {};
+  const nextCamera: Partial<FormCamera & CameraConfig> = nextRoute.camera ?? {};
   Object.assign(route, defaults, nextRoute, {
-    start: { ...defaults.start, ...(nextRoute.start ?? nextRoute.from ?? {}) },
-    end: { ...defaults.end, ...(nextRoute.end ?? nextRoute.to ?? {}) },
+    start: { ...defaults.start, ...normalizeLocationInput(nextRoute.start ?? nextRoute.from) },
+    end: { ...defaults.end, ...normalizeLocationInput(nextRoute.end ?? nextRoute.to) },
     path: nextRoute.path ?? defaults.path,
     camera: {
       ...defaults.camera,
@@ -328,27 +272,27 @@ function openSaveModal(): void {
   saveModalName.value = presetName.value || route.name || "";
   saveModalOpen.value = true;
   nextTick(() => {
-    const input = document.querySelector(".modal .text-input");
+    const input = document.querySelector<HTMLInputElement>(".modal .text-input");
     if (input) input.focus();
   });
 }
 
 async function confirmSave(): Promise<void> {
   const name = saveModalName.value.trim() || route.name || "Route preset";
-  const payload = await requestJson<{ name: string; route: { id: string; name?: string } }>("/api/presets", {
+  const payload = await requestJson<PresetDetail>("/api/presets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, route: JSON.parse(JSON.stringify(route)) })
+    body: JSON.stringify({ name, route: toRouteConfig(route) })
   });
   presetName.value = payload.name;
-  route.id = payload.route.id;
+  route.id = payload.route.id ?? route.id;
   route.name = payload.route.name ?? route.name;
   saveModalOpen.value = false;
   await loadPresets();
 }
 
 async function loadPreset(id: string): Promise<void> {
-  const payload = await requestJson<{ name?: string; route: RouteConfig }>(`/api/presets/${encodeURIComponent(id)}`);
+  const payload = await requestJson<PresetDetail>(`/api/presets/${encodeURIComponent(id)}`);
   applyRoute(payload.route);
   presetName.value = payload.name ?? payload.route.name ?? "";
   previewProgress.value = 0;
@@ -361,7 +305,7 @@ async function queueRender(): Promise<void> {
   await requestJson("/api/render-jobs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ route: JSON.parse(JSON.stringify(route)) })
+    body: JSON.stringify({ route: toRouteConfig(route) })
   });
 }
 
@@ -384,13 +328,13 @@ function confirmReset(): void {
 
 function applySearchResult(kind: "start" | "end", result: ProviderSearchResult): void {
   route[kind] = { label: result.label, query: result.query, coords: result.coords };
-  searchState[`${kind}Results`] = [];
+  setSearchResults(kind, []);
   schedulePreview(0);
 }
 
 function updateLocationQuery(kind: "start" | "end", query: string): void {
   route[kind] = { ...route[kind], label: "", query, coords: null };
-  if (!query.trim()) searchState[`${kind}Results`] = [];
+  if (!query.trim()) setSearchResults(kind, []);
   schedulePreview(0);
 }
 
@@ -398,21 +342,19 @@ function scheduleSearch(kind: "start" | "end", query: string): void {
   const timerRef = kind === "start" ? startSearchTimer : endSearchTimer;
   window.clearTimeout(timerRef);
   const handle = window.setTimeout(async () => {
-    const resultsKey = `${kind}Results` as keyof SearchState;
-    const loadingKey = `${kind}Loading` as keyof SearchState;
     if (!query || query.trim().length < 3) {
-      searchState[resultsKey] = [] as ProviderSearchResult[];
-      searchState[loadingKey] = false;
+      setSearchResults(kind, []);
+      setSearchLoading(kind, false);
       return;
     }
-    searchState[loadingKey] = true;
+    setSearchLoading(kind, true);
     try {
-      const payload = await requestJson<{ results: ProviderSearchResult[] }>(`/api/search?q=${encodeURIComponent(query)}`);
-      searchState[resultsKey] = payload.results;
+      const payload = await requestJson<SearchResponse>(`/api/search?q=${encodeURIComponent(query)}`);
+      setSearchResults(kind, payload.results);
     } catch (error) {
       console.error(error);
     } finally {
-      searchState[loadingKey] = false;
+      setSearchLoading(kind, false);
     }
   }, 260);
   if (kind === "start") startSearchTimer = handle;
@@ -428,11 +370,11 @@ function schedulePreview(delayMs: number = 320): void {
       previewLoading.value = false;
       return;
     }
-    const payload = routeForPreview(JSON.parse(JSON.stringify(route)));
+    const payload = toRouteConfig(route);
     previewLoading.value = true;
     previewError.value = "";
     try {
-      const preview = await requestJson<{ route: PreparedRoute }>("/api/preview", {
+      const preview = await requestJson<PreviewResponse>("/api/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ route: payload })
@@ -457,20 +399,21 @@ onMounted(async () => {
   await Promise.all([loadPresets(), loadJobs()]);
   events = new EventSource("/api/render-events");
   events.onmessage = (event) => {
-    const payload = JSON.parse(event.data);
+    const payload = JSON.parse(event.data) as RenderJobsResponse;
     jobs.value = payload.jobs;
   };
   pollTimer = window.setInterval(loadJobs, 30_000);
-  document.addEventListener("visibilitychange", () => {
+  visibilityChangeHandler = () => {
     if (!document.hidden) loadJobs();
-  });
+  };
+  document.addEventListener("visibilitychange", visibilityChangeHandler);
   clickOutsideHandler = (e) => {
     const queueWrap = document.querySelector(".queue-trigger-wrap");
-    if (queueOpen.value && queueWrap && !queueWrap.contains(e.target)) {
+    if (queueOpen.value && queueWrap && e.target instanceof Node && !queueWrap.contains(e.target)) {
       queueOpen.value = false;
     }
     const infoWrap = document.querySelector(".info-trigger-wrap");
-    if (infoOpen.value && infoWrap && !infoWrap.contains(e.target)) {
+    if (infoOpen.value && infoWrap && e.target instanceof Node && !infoWrap.contains(e.target)) {
       infoOpen.value = false;
     }
   };
@@ -484,6 +427,7 @@ onBeforeUnmount(() => {
   window.clearInterval(pollTimer);
   cancelAnimationFrame(playRaf);
   events?.close();
+  if (visibilityChangeHandler) document.removeEventListener("visibilitychange", visibilityChangeHandler);
   if (clickOutsideHandler) document.removeEventListener("click", clickOutsideHandler);
 });
 </script>

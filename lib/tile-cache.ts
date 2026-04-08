@@ -36,12 +36,22 @@ export function createTileCache({ cacheDir }: { cacheDir?: string } = {}): TileC
   const dir = cacheDir ?? path.resolve(process.cwd(), ".tile-cache");
   const inflight = new Map<string, Promise<Buffer>>();
 
+  function getTileProviderConfig(provider: string): TileProviderConfig {
+    const config = TILE_PROVIDERS[provider];
+    if (!config) {
+      throw new Error(`Unknown tile provider "${provider}"`);
+    }
+
+    return config;
+  }
+
   function cachePath(provider: string, z: number, x: number, y: number): string {
-    return path.join(dir, provider, String(z), String(x), `${y}.${TILE_PROVIDERS[provider].ext}`);
+    const config = getTileProviderConfig(provider);
+    return path.join(dir, provider, String(z), String(x), `${y}.${config.ext}`);
   }
 
   function remoteUrl(provider: string, z: number, x: number, y: number): string {
-    return TILE_PROVIDERS[provider].templateUrl
+    return getTileProviderConfig(provider).templateUrl
       .replace("{z}", String(z))
       .replace("{x}", String(x))
       .replace("{y}", String(y));
@@ -91,7 +101,7 @@ export function createTileCache({ cacheDir }: { cacheDir?: string } = {}): TileC
     x: number,
     y: number
   ): Promise<void> {
-    if (!TILE_PROVIDERS[provider]) {
+    if (!(provider in TILE_PROVIDERS)) {
       response.writeHead(404, { "Content-Type": "text/plain" });
       response.end("Unknown tile provider");
       return;

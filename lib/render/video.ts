@@ -5,7 +5,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { buildOutputPath, prepareRoute } from "../routes.js";
 import { ensureDir, sleep } from "../utils.js";
 import type { RouteConfig, PreparedRoute, RenderProgress, RenderResult } from "../../types/index.js";
-import type { ProviderRegistry } from "../../types/index.js";
+import type { ProviderRegistry, RendererWindow } from "../../types/index.js";
 
 interface FfmpegProgressOptions {
   cwd: string;
@@ -89,7 +89,10 @@ export async function renderRouteToVideo(
   await ensureDir(tmpDir);
 
   onProgress?.({ stage: "preparing" });
-  const route = await prepareRoute(routeConfig, { providerRegistry });
+  const route = await prepareRoute(
+    routeConfig,
+    providerRegistry ? { providerRegistry } : {}
+  );
   route.output = buildOutputPath(routeConfig);
 
   let browser: Browser | undefined;
@@ -110,12 +113,21 @@ export async function renderRouteToVideo(
     });
 
     await page.goto(renderBaseUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => Boolean((window as unknown as Record<string, unknown>).__MAP_RENDERER_READY__));
+    await page.waitForFunction(() => {
+      const rendererWindow = window as Window & RendererWindow;
+      return Boolean(rendererWindow.__MAP_RENDERER_READY__);
+    });
 
     onProgress?.({ stage: "priming_tiles" });
     await page.evaluate(async (scene: PreparedRoute) => {
-      await (window as unknown as Record<string, { setScene(s: PreparedRoute): Promise<void>; primeTiles(): Promise<void> }>).__MAP_RENDERER__.setScene(scene);
-      await (window as unknown as Record<string, { setScene(s: PreparedRoute): Promise<void>; primeTiles(): Promise<void> }>).__MAP_RENDERER__.primeTiles();
+      const rendererWindow = window as Window & RendererWindow;
+      const renderer = rendererWindow.__MAP_RENDERER__;
+      if (!renderer) {
+        throw new Error("Renderer API is unavailable");
+      }
+
+      await renderer.setScene(scene);
+      await renderer.primeTiles();
     }, route);
 
     const fps = Number(route.fps ?? 30);
@@ -127,7 +139,15 @@ export async function renderRouteToVideo(
 
     for (let frame = 0; frame < totalFrames; frame += 1) {
       const progress = totalFrames === 1 ? 1 : frame / (totalFrames - 1);
-      await page.evaluate((value: number) => (window as unknown as Record<string, { renderFrame(t: number): void }>).__MAP_RENDERER__.renderFrame(value), progress);
+      await page.evaluate(async (value: number) => {
+        const rendererWindow = window as Window & RendererWindow;
+        const renderer = rendererWindow.__MAP_RENDERER__;
+        if (!renderer) {
+          throw new Error("Renderer API is unavailable");
+        }
+
+        await renderer.renderFrame(value);
+      }, progress);
       await page.screenshot({
         path: path.join(frameDir, `frame-${String(frame).padStart(5, "0")}.png`)
       });
@@ -164,7 +184,7 @@ export async function renderRouteToVideo(
     await runFfmpegWithProgress(args, {
       cwd: rootDir,
       durationSeconds,
-      onProgress
+      ...(onProgress ? { onProgress } : {})
     });
 
     onProgress?.({

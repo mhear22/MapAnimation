@@ -6,7 +6,7 @@ export interface ProviderSearchResult {
   label: string;
   query: string;
   coords: [number, number];
-  address?: unknown;
+  address?: Record<string, unknown> | null;
 }
 
 export interface Provider {

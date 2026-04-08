@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import type { PreparedRoute } from "../types.js";
+import type { RenderFrameMessage, RendererCommandMessage, RendererResponseMessage, SetSceneMessage } from "../../../types/web.js";
 
-interface PreparedRoute {
-  [key: string]: unknown;
-}
-
-const props = defineProps({
-  route: { type: Object as () => PreparedRoute | null, default: null },
-  progress: { type: Number, required: true }
-});
+const props = defineProps<{
+  route: PreparedRoute | null;
+  progress: number;
+}>();
 
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const ready = ref(false);
+const sceneReady = ref(false);
+let sceneSyncVersion = 0;
 
 interface PendingEntry {
   resolve: () => void;
@@ -24,39 +24,40 @@ function createRequestId(): string {
   return `req-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
 }
 
-interface MessagePayload {
-  namespace?: string;
-  type?: string;
-  requestId?: string;
-  message?: string;
-  [key: string]: unknown;
+function toSerializableMessage(message: RendererCommandMessage): RendererCommandMessage {
+  return JSON.parse(JSON.stringify(message)) as RendererCommandMessage;
 }
 
-function onMessage(event: MessageEvent<MessagePayload>): void {
+function onMessage(event: MessageEvent<RendererResponseMessage>): void {
   const payload = event.data;
   if (!payload || payload.namespace !== "mapanim") return;
   if (payload.type === "ready") { ready.value = true; return; }
   const entry = payload.requestId ? pending.get(payload.requestId) : undefined;
   if (!entry) return;
   pending.delete(payload.requestId!);
-  if (payload.type === "command-error") { entry.reject(new Error(payload.message ?? "Unknown error")); return; }
+  if (payload.type === "command-error") { entry.reject(new Error(payload.message)); return; }
   entry.resolve();
 }
 
-function sendCommand(type: string, extra: Record<string, unknown> = {}): Promise<void> {
+function sendCommand(message: RendererCommandMessage): Promise<void> {
   if (!iframeRef.value?.contentWindow) return Promise.resolve();
-  const requestId = createRequestId();
-  const payload = JSON.parse(JSON.stringify({ namespace: "mapanim", requestId, type, ...toRaw(extra) }));
-  const promise = new Promise<void>((resolve, reject) => { pending.set(requestId, { resolve, reject }); });
-  iframeRef.value.contentWindow.postMessage(payload, window.location.origin);
+  const promise = new Promise<void>((resolve, reject) => { pending.set(message.requestId, { resolve, reject }); });
+  iframeRef.value.contentWindow.postMessage(toSerializableMessage(message), window.location.origin);
   return promise;
 }
 
 async function syncScene(scene: PreparedRoute): Promise<void> {
+  const version = ++sceneSyncVersion;
+  sceneReady.value = false;
   await nextTick();
   if (!ready.value || !scene) return;
-  await sendCommand("set-scene", { scene });
-  await sendCommand("render-frame", { progress: props.progress });
+  const setSceneMessage: SetSceneMessage = { namespace: "mapanim", requestId: createRequestId(), type: "set-scene", scene };
+  const renderFrameMessage: RenderFrameMessage = { namespace: "mapanim", requestId: createRequestId(), type: "render-frame", progress: props.progress };
+  await sendCommand(setSceneMessage);
+  if (version !== sceneSyncVersion) return;
+  await sendCommand(renderFrameMessage);
+  if (version !== sceneSyncVersion) return;
+  sceneReady.value = true;
 }
 
 watch(ready, async (value) => {
@@ -65,13 +66,17 @@ watch(ready, async (value) => {
 });
 
 watch(() => props.route, async (scene) => {
+  sceneReady.value = false;
   if (!scene) return;
   try { await syncScene(scene); } catch (error) { console.error(error); }
 }, { deep: true });
 
 watch(() => props.progress, async (value) => {
-  if (!ready.value || !props.route) return;
-  try { await sendCommand("render-frame", { progress: value }); } catch (error) { console.error(error); }
+  if (!ready.value || !props.route || !sceneReady.value) return;
+  try {
+    const message: RenderFrameMessage = { namespace: "mapanim", requestId: createRequestId(), type: "render-frame", progress: value };
+    await sendCommand(message);
+  } catch (error) { console.error(error); }
 });
 
 onMounted(() => { window.addEventListener("message", onMessage); });

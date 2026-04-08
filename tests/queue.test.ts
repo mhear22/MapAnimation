@@ -26,6 +26,9 @@ test("render queue processes jobs sequentially", async () => {
 
   assert.deepEqual(order, ["start:one", "end:one", "start:two", "end:two"]);
   const jobs = queue.list();
-  assert.equal(jobs[0].status, "completed");
-  assert.equal(jobs[1].status, "completed");
+  const [firstJob, secondJob] = jobs;
+  assert.ok(firstJob);
+  assert.ok(secondJob);
+  assert.equal(firstJob.status, "completed");
+  assert.equal(secondJob.status, "completed");
 });

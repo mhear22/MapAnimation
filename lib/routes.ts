@@ -1,6 +1,6 @@
 import path from "node:path";
 import crypto from "node:crypto";
-import { clamp, readJson, slugify } from "./utils.js";
+import { clamp, type CliArgs, readJson, slugify } from "./utils.js";
 import { createProviderRegistry } from "./providers/index.js";
 import { mapTravelModeToProfile } from "./providers/osm.js";
 import type {
@@ -52,7 +52,7 @@ export function mergeRoute(defaults: Partial<RouteConfig>, route: RouteConfig): 
 }
 
 export async function loadRoutes(
-  args: Record<string, string | boolean>,
+  args: CliArgs,
   { rootDir }: LoadRoutesOptions
 ): Promise<RouteConfig[]> {
   if (args.config) {
@@ -227,13 +227,17 @@ export function normalizeCamera(camera: Partial<CameraConfig> = {}, route: Parti
   const maxAltitude = clamp(Number(camera.maxAltitude ?? (legacyPeakAltitude != null ? 50 + Number(legacyPeakAltitude) : 100)), 50, 150);
   const aggressiveness = clamp(Number(camera.aggressiveness ?? camera.curvePosition ?? route.curvePosition ?? 50), 0, 100);
   const smoothing = clamp(Number(camera.smoothing ?? route.cameraSmoothing ?? 0.92), 0, 1);
+  const timingCurve = clamp(Number(camera.timingCurve ?? 50), 0, 100);
+  const timingInverted = Boolean(camera.timingInverted);
 
   return {
     startZoom,
     endZoom,
     maxAltitude,
     aggressiveness,
-    smoothing
+    smoothing,
+    timingCurve,
+    timingInverted
   };
 }
 

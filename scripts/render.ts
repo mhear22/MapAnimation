@@ -6,7 +6,7 @@ import { createProviderRegistry } from "../lib/providers/index.js";
 import { createRenderAssetServer } from "../lib/render/asset-server.js";
 import { renderRouteToVideo } from "../lib/render/video.js";
 import { loadRoutes } from "../lib/routes.js";
-import { parseArgs } from "../lib/utils.js";
+import { parseArgs, type CliArgs } from "../lib/utils.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +14,7 @@ const rootDir: string = path.resolve(__dirname, "..");
 const webDir: string = path.join(rootDir, "web");
 
 async function main(): Promise<void> {
-  const args: Record<string, string | boolean> = parseArgs(process.argv.slice(2));
+  const args: CliArgs = parseArgs(process.argv.slice(2));
   const routes: RouteConfig[] = await loadRoutes(args, { rootDir });
   const providerRegistry = createProviderRegistry();
   const assetServer = await createRenderAssetServer({ rootDir, webDir });

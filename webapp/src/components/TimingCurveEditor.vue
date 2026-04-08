@@ -1,22 +1,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from "vue";
+import type { FormCamera } from "../types.js";
 
-interface TimingCameraLike {
-  startZoom: number;
-  endZoom: number;
-  maxAltitude: number;
-  aggressiveness: number;
-  smoothing: number;
-  timingCurve?: number;
-  timingInverted?: boolean;
-}
-
-const props = defineProps({
-  camera: { type: Object as () => TimingCameraLike, required: true },
-  progress: { type: Number, default: 0 }
+const props = withDefaults(defineProps<{
+  camera: FormCamera;
+  progress?: number;
+}>(), {
+  progress: 0
 });
 
-const emit = defineEmits(["update-camera"]);
+const emit = defineEmits<{
+  (e: "update-camera", value: FormCamera): void;
+}>();
 
 const width = 360;
 const height = 220;
@@ -93,7 +88,7 @@ const gridLines = computed<number[]>(() => {
   return values;
 });
 
-function updateCamera(nextValues: Partial<TimingCameraLike>): void { emit("update-camera", { ...props.camera, ...nextValues }); }
+function updateCamera(nextValues: Partial<FormCamera>): void { emit("update-camera", { ...props.camera, ...nextValues }); }
 
 function getLocalPoint(event: PointerEvent): { x: number; y: number } {
   const bounds = svgRef.value?.getBoundingClientRect();

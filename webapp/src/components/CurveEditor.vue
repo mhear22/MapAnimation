@@ -1,40 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import type { FormCamera, PreviewRouteLike } from "../types.js";
 
-interface CameraLike {
-  startZoom: number;
-  endZoom: number;
-  maxAltitude: number;
-  aggressiveness: number;
-  smoothing: number;
-  timingCurve?: number;
-  timingInverted?: boolean;
-}
-
-interface RoutePoint {
-  coords: [number, number];
-}
-
-interface RoutePath {
-  coordinates: [number, number][];
-}
-
-interface RouteLike {
-  width?: number;
-  height?: number;
-  overviewPadding?: number;
-  path?: RoutePath;
-  from?: RoutePoint;
-  to?: RoutePoint;
-}
-
-const props = defineProps({
-  camera: { type: Object as () => CameraLike, required: true },
-  progress: { type: Number, default: 0 },
-  route: { type: Object as () => RouteLike | null, default: null }
+const props = withDefaults(defineProps<{
+  camera: FormCamera;
+  progress?: number;
+  route?: PreviewRouteLike | null;
+}>(), {
+  progress: 0,
+  route: null
 });
 
-const emit = defineEmits(["update-camera"]);
+const emit = defineEmits<{
+  (e: "update-camera", value: FormCamera): void;
+}>();
 
 const editField = ref<string | null>(null);
 const startZoomInput = ref<HTMLInputElement | null>(null);
@@ -50,12 +29,20 @@ watch(editField, async (field) => {
 });
 
 function commitZoom(field: "startZoom" | "endZoom", event: Event): void {
-  const value = clamp(parseFloat((event.target as HTMLInputElement).value) || 3, minZoom, maxZoom);
-  updateCamera({ [field]: value });
+  if (!(event.target instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const value = clamp(parseFloat(event.target.value) || 3, minZoom, maxZoom);
+  updateCamera({ [field]: value } as Partial<FormCamera>);
 }
 
 function commitAlt(event: Event): void {
-  const value = clamp(Math.round(parseFloat((event.target as HTMLInputElement).value) || 100), 50, 150);
+  if (!(event.target instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const value = clamp(Math.round(parseFloat(event.target.value) || 100), 50, 150);
   updateCamera({ maxAltitude: value });
 }
 
@@ -129,8 +116,17 @@ function fitBoundsZoom(coordinates: [number, number][], viewportWidth: number, v
 }
 
 const routeCoordinates = computed<[number, number][]>(() => {
-  if (props.route?.path?.coordinates?.length >= 2) return props.route.path.coordinates;
-  if (props.route?.from?.coords && props.route?.to?.coords) return [props.route.from.coords, props.route.to.coords];
+  const pathCoordinates = props.route?.path?.coordinates;
+  if (pathCoordinates && pathCoordinates.length >= 2) {
+    return pathCoordinates;
+  }
+
+  const fromCoords = props.route?.from?.coords;
+  const toCoords = props.route?.to?.coords;
+  if (fromCoords && toCoords) {
+    return [fromCoords, toCoords];
+  }
+
   return [];
 });
 
@@ -200,7 +196,7 @@ const gridLines = computed<number[]>(() => {
   return values;
 });
 
-function updateCamera(nextValues: Partial<CameraLike>): void { emit("update-camera", { ...props.camera, ...nextValues }); }
+function updateCamera(nextValues: Partial<FormCamera>): void { emit("update-camera", { ...props.camera, ...nextValues }); }
 
 function getLocalPoint(event: PointerEvent): { x: number; y: number } {
   const bounds = svgRef.value?.getBoundingClientRect();

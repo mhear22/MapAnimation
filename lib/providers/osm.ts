@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { sleep } from "../utils.js";
+import { sleep, toError } from "../utils.js";
 import type { Provider, ProviderSearchResult, RoutedPath } from "../../types/index.js";
 
 const USER_AGENT = "MapAnim/0.2 (local webapp)";
@@ -58,12 +58,12 @@ async function requestJson<T = unknown>(url: URL, { retries = 3 }: { retries?: n
 
       return (await response.json()) as T;
     } catch (error) {
-      lastError = error as Error;
+      lastError = toError(error);
 
       try {
         return await requestJsonViaCurl<T>(url);
       } catch (curlError) {
-        lastError = curlError as Error;
+        lastError = toError(curlError);
       }
 
       if (attempt < retries - 1) {
@@ -101,11 +101,12 @@ export function createOsmProvider(): Provider {
 
     async geocode(query: string): Promise<ProviderSearchResult> {
       const results = await this.search(query, { limit: 1 });
-      if (!results.length) {
+      const [result] = results;
+      if (!result) {
         throw new Error(`No geocoding result found for "${query}"`);
       }
 
-      return results[0];
+      return result;
     },
 
     async route({ fromCoords, toCoords, mode }: { fromCoords: [number, number]; toCoords: [number, number]; mode: string }): Promise<RoutedPath> {

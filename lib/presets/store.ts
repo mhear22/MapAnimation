@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { readJson, slugify, writeJson } from "../utils.js";
+import { isRecord, readJson, slugify, writeJson } from "../utils.js";
 import type { RouteConfig } from "../../types/index.js";
 import type { PresetItem, PresetDetail, PresetSaveRequest } from "../../types/api.js";
 
@@ -28,11 +28,14 @@ export function createPresetStore({ rootDir }: { rootDir: string }) {
       }
 
       const filePath = path.join(presetsDir, entry.name);
-      const data = await readJson<Record<string, unknown>>(filePath);
+      const data = await readJson<unknown>(filePath);
+      const presetData = isRecord(data) ? data : {};
+      const fileId = typeof presetData["id"] === "string" ? presetData["id"] : undefined;
+      const fileName = typeof presetData["name"] === "string" ? presetData["name"] : undefined;
       items.push({
-        id: `preset:${(data.id as string) ?? entry.name.replace(/\.json$/, "")}`,
+        id: `preset:${fileId ?? entry.name.replace(/\.json$/, "")}`,
         source: "preset",
-        name: (data.name as string) ?? (data.id as string) ?? entry.name.replace(/\.json$/, ""),
+        name: fileName ?? fileId ?? entry.name.replace(/\.json$/, ""),
         filePath,
         updatedAt: (await fs.stat(filePath)).mtime.toISOString()
       });
@@ -63,6 +66,9 @@ export function createPresetStore({ rootDir }: { rootDir: string }) {
 
     async get(id: string): Promise<PresetDetail> {
       const [source, rawId] = String(id).split(":");
+      if (!rawId) {
+        throw new Error(`Malformed preset id "${id}"`);
+      }
 
       if (source === "route") {
         const parsed = await readJson<RoutesConfigFile>(routesConfigPath);
@@ -88,7 +94,7 @@ export function createPresetStore({ rootDir }: { rootDir: string }) {
       return {
         id,
         source,
-        name: route.name ?? rawId,
+        name: route.name ?? route.id ?? rawId,
         route
       };
     },

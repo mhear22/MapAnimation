@@ -1,20 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import type { ProviderSearchResult } from "../types.js";
 
-interface ProviderSearchResult {
-  id: string;
-  provider: string;
+const props = withDefaults(defineProps<{
   label: string;
-  query: string;
-  coords: [number, number];
-}
-
-const props = defineProps({
-  label: { type: String, required: true },
-  modelValue: { type: String, required: true },
-  results: { type: Array as () => ProviderSearchResult[], required: true },
-  loading: { type: Boolean, default: false },
-  selectedLabel: { type: String, default: "" }
+  modelValue: string;
+  results: ProviderSearchResult[];
+  loading?: boolean;
+  selectedLabel?: string;
+}>(), {
+  loading: false,
+  selectedLabel: ""
 });
 
 const emit = defineEmits<{
@@ -28,7 +24,9 @@ const showDropdown = computed<boolean>(() => {
 });
 
 function onInput(event: Event): void {
-  emit("update:modelValue", (event.target as HTMLInputElement).value);
+  if (event.target instanceof HTMLInputElement) {
+    emit("update:modelValue", event.target.value);
+  }
 }
 
 function onBlur(): void {

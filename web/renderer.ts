@@ -1,12 +1,7 @@
-import type { PreparedRoute } from "../types/route.js";
+import type { GeoJSONSource, Map as MapLibreMap, Marker as MapLibreMarker, StyleSpecification } from "maplibre-gl";
+import type { PreparedRoute, RendererApi, RendererCommandMessage, RendererReadyMessage } from "../types/index.js";
 
 // --- Types ---
-
-export interface RendererApi {
-  setScene(scene: PreparedRoute): Promise<void>;
-  primeTiles(): Promise<void>;
-  renderFrame(progress: number): Promise<void>;
-}
 
 export interface PathSampler {
   coordinates: [number, number][];
@@ -26,33 +21,12 @@ export interface CameraState {
 }
 
 export interface RendererState {
-  map: any;
+  map: MapLibreMap | null;
   scene: PreparedRoute | null;
-  markers: any[];
+  markers: MapLibreMarker[];
   cameras: CameraState | null;
   mapType: string | null;
   lastProgress: number;
-}
-
-interface PostMessagePayload {
-  namespace: "mapanim";
-  type: string;
-  requestId?: string;
-  scene?: PreparedRoute;
-  progress?: number;
-}
-
-interface RendererCamera {
-  startZoom: number;
-  endZoom: number;
-  maxAltitude: number;
-  aggressiveness: number;
-  smoothing: number;
-  peakAltitude?: number;
-  curvePosition?: number;
-  timingCurve?: number;
-  timingInverted?: boolean;
-  cameraSmoothing?: number;
 }
 
 declare global {
@@ -76,7 +50,7 @@ const state: RendererState = {
   lastProgress: 0
 };
 
-function buildBaseStyle(mapType = "satellite") {
+function buildBaseStyle(mapType = "satellite"): StyleSpecification {
   if (mapType === "standard") {
     return {
       version: 8 as const,
@@ -120,6 +94,46 @@ function buildBaseStyle(mapType = "satellite") {
       }
     ]
   };
+}
+
+function requireMap(): MapLibreMap {
+  if (!state.map) {
+    throw new Error("Map has not been initialized");
+  }
+
+  return state.map;
+}
+
+function requireCameras(): CameraState {
+  if (!state.cameras) {
+    throw new Error("Camera state has not been initialized");
+  }
+
+  return state.cameras;
+}
+
+function getRouteSource(map: MapLibreMap): GeoJSONSource {
+  const source = map.getSource("route");
+  if (!source || !("setData" in source)) {
+    throw new Error("Route source is unavailable");
+  }
+
+  return source as GeoJSONSource;
+}
+
+function toCoordinatePair(
+  value: { toArray(): [number, number] } | { lng: number; lat: number } | { lon: number; lat: number } | [number, number]
+): [number, number] {
+  if (Array.isArray(value)) {
+    const [lng = 0, lat = 0] = value;
+    return [lng, lat];
+  }
+
+  if ("toArray" in value) {
+    return value.toArray();
+  }
+
+  return ["lng" in value ? value.lng : value.lon, value.lat];
 }
 
 function createMarker(label: string, className: string): HTMLDivElement {
@@ -227,19 +241,33 @@ function buildPathSampler(coordinates?: [number, number][]): PathSampler {
 
   const cumulative = [0];
   for (let index = 1; index < coordinates.length; index += 1) {
-    const segmentLength = haversineKilometers(coordinates[index - 1], coordinates[index]);
-    cumulative.push(cumulative[index - 1] + segmentLength);
+    const previous = coordinates[index - 1];
+    const current = coordinates[index];
+    const priorDistance = cumulative[index - 1] ?? 0;
+    if (!previous || !current) {
+      cumulative.push(priorDistance);
+      continue;
+    }
+
+    const segmentLength = haversineKilometers(previous, current);
+    cumulative.push(priorDistance + segmentLength);
   }
 
   return {
     coordinates,
     cumulative,
-    total: cumulative[cumulative.length - 1]
+    total: cumulative[cumulative.length - 1] ?? 0
   };
 }
 
 function smoothCoordinates(coordinates: [number, number][], passes = 1, radius = 2): [number, number][] {
   if (!coordinates?.length || coordinates.length < 3) {
+    return coordinates;
+  }
+
+  const first = coordinates[0];
+  const last = coordinates[coordinates.length - 1];
+  if (!first || !last) {
     return coordinates;
   }
 
@@ -260,19 +288,27 @@ function smoothCoordinates(coordinates: [number, number][], passes = 1, radius =
       ) {
         const distanceFromCenter = Math.abs(neighbor - index);
         const weight = windowRadius + 1 - distanceFromCenter;
-        lngSum += smoothed[neighbor][0] * weight;
-        latSum += smoothed[neighbor][1] * weight;
+        const neighborCoordinate = smoothed[neighbor];
+        if (!neighborCoordinate) {
+          continue;
+        }
+
+        lngSum += neighborCoordinate[0] * weight;
+        latSum += neighborCoordinate[1] * weight;
         weightSum += weight;
       }
 
       next[index] = [lngSum / weightSum, latSum / weightSum];
     }
 
-    next[0] = [...coordinates[0]];
-    next[next.length - 1] = [...coordinates[coordinates.length - 1]];
+    next[0] = [...first];
+    next[next.length - 1] = [...last];
 
     for (let index = 0; index < smoothed.length; index += 1) {
-      smoothed[index] = next[index];
+      const nextCoordinate = next[index];
+      if (nextCoordinate) {
+        smoothed[index] = nextCoordinate;
+      }
     }
   }
 
@@ -300,30 +336,39 @@ function buildCameraPathSampler(coordinates: [number, number][], smoothing = 0.9
 }
 
 function samplePath(path: PathSampler, progress: number): [number, number] {
-  if (!path.coordinates.length) {
+  const firstCoordinate = path.coordinates[0];
+  if (!firstCoordinate) {
     return [0, 0];
   }
 
   if (path.coordinates.length === 1 || path.total === 0) {
-    return path.coordinates[0];
+    return firstCoordinate;
   }
 
   const target = path.total * clamp(progress, 0, 1);
 
   for (let index = 1; index < path.cumulative.length; index += 1) {
-    if (target <= path.cumulative[index]) {
-      const segmentStart = path.cumulative[index - 1];
-      const segmentLength = path.cumulative[index] - segmentStart || 1;
+    const segmentEnd = path.cumulative[index];
+    const segmentStart = path.cumulative[index - 1];
+    const from = path.coordinates[index - 1];
+    const to = path.coordinates[index];
+    if (segmentEnd === undefined || segmentStart === undefined || !from || !to) {
+      continue;
+    }
+
+    if (target <= segmentEnd) {
+      const segmentLength = segmentEnd - segmentStart || 1;
       const segmentProgress = (target - segmentStart) / segmentLength;
-      return lerpPoint(path.coordinates[index - 1], path.coordinates[index], segmentProgress);
+      return lerpPoint(from, to, segmentProgress);
     }
   }
 
-  return path.coordinates[path.coordinates.length - 1];
+  return path.coordinates[path.coordinates.length - 1] ?? firstCoordinate;
 }
 
 function waitForMapEvent(eventName: string, timeoutMs = 2500): Promise<boolean> {
   return new Promise((resolve) => {
+    const map = requireMap();
     let settled = false;
     let timeoutId = 0;
 
@@ -334,7 +379,7 @@ function waitForMapEvent(eventName: string, timeoutMs = 2500): Promise<boolean> 
 
       settled = true;
       window.clearTimeout(timeoutId);
-      state.map!.off(eventName, onEvent);
+      map.off(eventName, onEvent);
       resolve(result);
     };
 
@@ -342,7 +387,7 @@ function waitForMapEvent(eventName: string, timeoutMs = 2500): Promise<boolean> 
       finish(true);
     };
 
-    state.map!.on(eventName, onEvent);
+    map.on(eventName, onEvent);
     timeoutId = window.setTimeout(() => {
       finish(false);
     }, timeoutMs);
@@ -356,7 +401,8 @@ function sleep(milliseconds: number): Promise<void> {
 }
 
 async function waitForIdle(timeoutMs = 2500): Promise<void> {
-  if (state.map!.loaded() && state.map!.areTilesLoaded()) {
+  const map = requireMap();
+  if (map.loaded() && map.areTilesLoaded()) {
     await sleep(120);
     return;
   }
@@ -366,21 +412,23 @@ async function waitForIdle(timeoutMs = 2500): Promise<void> {
 }
 
 async function waitForStyleLoad(timeoutMs = 2500): Promise<void> {
-  if (state.map!.isStyleLoaded()) {
+  const map = requireMap();
+  if (map.isStyleLoaded()) {
     return;
   }
 
   const loaded = await waitForMapEvent("style.load", timeoutMs);
-  if (!loaded && !state.map!.isStyleLoaded()) {
+  if (!loaded && !map.isStyleLoaded()) {
     throw new Error("Timed out waiting for the map style to load");
   }
 }
 
 async function ensureRouteLayers(): Promise<void> {
   await waitForStyleLoad();
+  const map = requireMap();
 
-  if (!state.map!.getSource("route")) {
-    state.map!.addSource("route", {
+  if (!map.getSource("route")) {
+    map.addSource("route", {
       type: "geojson",
       data: {
         type: "FeatureCollection",
@@ -389,8 +437,8 @@ async function ensureRouteLayers(): Promise<void> {
     });
   }
 
-  if (!state.map!.getLayer("route-shadow")) {
-    state.map!.addLayer({
+  if (!map.getLayer("route-shadow")) {
+    map.addLayer({
       id: "route-shadow",
       type: "line",
       source: "route",
@@ -403,8 +451,8 @@ async function ensureRouteLayers(): Promise<void> {
     });
   }
 
-  if (!state.map!.getLayer("route-line")) {
-    state.map!.addLayer({
+  if (!map.getLayer("route-line")) {
+    map.addLayer({
       id: "route-line",
       type: "line",
       source: "route",
@@ -416,8 +464,8 @@ async function ensureRouteLayers(): Promise<void> {
     });
   }
 
-  if (!state.map!.getLayer("route-points")) {
-    state.map!.addLayer({
+  if (!map.getLayer("route-points")) {
+    map.addLayer({
       id: "route-points",
       type: "circle",
       source: "route",
@@ -453,8 +501,10 @@ async function setupMap(): Promise<void> {
     fadeDuration: 0,
     pitch: 0,
     bearing: 0,
-    preserveDrawingBuffer: true
-  } as any);
+    canvasContextAttributes: {
+      preserveDrawingBuffer: true
+    }
+  });
 
   await waitForMapEvent("load");
   await ensureRouteLayers();
@@ -473,17 +523,18 @@ function removeMarkers(): void {
 
 async function setScene(scene: PreparedRoute): Promise<void> {
   await setupMap();
+  const map = requireMap();
   const targetMapType = scene.mapType ?? "satellite";
   if (targetMapType !== state.mapType) {
-    state.map!.setStyle(buildBaseStyle(targetMapType));
+    map.setStyle(buildBaseStyle(targetMapType));
     state.mapType = targetMapType;
   }
   await ensureRouteLayers();
-  state.map!.resize();
+  map.resize();
   removeMarkers();
   state.scene = scene;
 
-  const routeSource = state.map!.getSource("route");
+  const routeSource = getRouteSource(map);
   routeSource.setData({
     type: "FeatureCollection",
     features: [
@@ -493,16 +544,16 @@ async function setScene(scene: PreparedRoute): Promise<void> {
     ]
   });
 
-  const camera = scene.camera as RendererCamera;
+  const camera = scene.camera;
   const startZoom = camera.startZoom ?? scene.startZoom ?? 15.8;
   const endZoom = camera.endZoom ?? scene.endZoom ?? startZoom;
   const routeCoordinates =
     scene.path?.coordinates?.length >= 2 ? scene.path.coordinates : [scene.from.coords, scene.to.coords];
   const bounds = computeBounds(routeCoordinates);
-  const canvas = state.map!.getCanvas();
+  const canvas = map.getCanvas();
   const maxPadding = Math.max(24, Math.floor(Math.min(canvas.width || 0, canvas.height || 0) / 4) || 24);
   const paddingValue = clamp(Number(scene.overviewPadding ?? 180), 0, maxPadding);
-  const overviewCamera = state.map!.cameraForBounds(bounds, {
+  const overviewCamera = map.cameraForBounds(bounds, {
     padding: {
       top: paddingValue,
       right: paddingValue + 40,
@@ -513,7 +564,7 @@ async function setScene(scene: PreparedRoute): Promise<void> {
   });
   const closerZoom = Math.max(startZoom, endZoom);
   const requiredZoomOut = Math.max(0, closerZoom - (overviewCamera?.zoom ?? startZoom - 1.6));
-  const maxAltitude = clamp(camera.maxAltitude ?? (camera.peakAltitude != null ? 50 + camera.peakAltitude : 100), 50, 150);
+  const maxAltitude = clamp(camera.maxAltitude, 50, 150);
 
   state.cameras = {
     start: {
@@ -521,7 +572,7 @@ async function setScene(scene: PreparedRoute): Promise<void> {
       zoom: startZoom
     },
     overview: {
-      center: overviewCamera?.center?.toArray?.() ?? midpoint(scene.from.coords, scene.to.coords),
+      center: overviewCamera?.center ? toCoordinatePair(overviewCamera.center) : midpoint(scene.from.coords, scene.to.coords),
       zoom: Math.max(2.2, closerZoom - requiredZoomOut * (maxAltitude / 100))
     },
     end: {
@@ -529,10 +580,10 @@ async function setScene(scene: PreparedRoute): Promise<void> {
       zoom: endZoom
     },
     routePath: buildPathSampler(routeCoordinates),
-    cameraPath: buildCameraPathSampler(routeCoordinates, camera.smoothing ?? scene.cameraSmoothing ?? 0.92),
-    aggressiveness: clamp(camera.aggressiveness ?? camera.curvePosition ?? 50, 0, 100),
-    timingCurve: clamp(camera.timingCurve ?? 50, 0, 100),
-    timingInverted: Boolean(camera.timingInverted)
+    cameraPath: buildCameraPathSampler(routeCoordinates, camera.smoothing),
+    aggressiveness: clamp(camera.aggressiveness, 0, 100),
+    timingCurve: clamp(camera.timingCurve, 0, 100),
+    timingInverted: camera.timingInverted
   };
 
   state.markers.push(
@@ -542,7 +593,7 @@ async function setScene(scene: PreparedRoute): Promise<void> {
       offset: [12, -18]
     })
       .setLngLat(scene.from.coords)
-      .addTo(state.map!)
+      .addTo(map)
   );
 
   state.markers.push(
@@ -552,10 +603,10 @@ async function setScene(scene: PreparedRoute): Promise<void> {
       offset: [12, -18]
     })
       .setLngLat(scene.to.coords)
-      .addTo(state.map!)
+      .addTo(map)
   );
 
-  state.map!.jumpTo({
+  map.jumpTo({
     center: scene.from.coords,
     zoom: startZoom,
     bearing: 0,
@@ -566,8 +617,10 @@ async function setScene(scene: PreparedRoute): Promise<void> {
 }
 
 async function primeTiles(): Promise<void> {
-  for (const camera of [state.cameras!.overview, state.cameras!.start, state.cameras!.end]) {
-    state.map!.jumpTo({
+  const map = requireMap();
+  const cameras = requireCameras();
+  for (const camera of [cameras.overview, cameras.start, cameras.end]) {
+    map.jumpTo({
       center: camera.center,
       zoom: camera.zoom,
       bearing: 0,
@@ -578,23 +631,29 @@ async function primeTiles(): Promise<void> {
 }
 
 async function renderFrame(progress: number): Promise<void> {
+  const map = requireMap();
+  const cameras = state.cameras;
+  if (!cameras) {
+    state.lastProgress = progress;
+    return;
+  }
   const holdIn = 0.08;
   const holdOut = 0.08;
   const mapped = clamp((progress - holdIn) / (1 - holdIn - holdOut), 0, 1);
-  const eased = sampleTimingEasing(mapped, (state.cameras!.timingCurve ?? 50) / 100, state.cameras!.timingInverted);
+  const eased = sampleTimingEasing(mapped, cameras.timingCurve / 100, cameras.timingInverted);
 
-  const pathCenter = samplePath(state.cameras!.cameraPath, 0.5 - 0.5 * Math.cos(eased * Math.PI));
+  const pathCenter = samplePath(cameras.cameraPath, 0.5 - 0.5 * Math.cos(eased * Math.PI));
 
   const halfProgress = 1 - Math.abs(mapped - 0.5) * 2;
-  const rawBlend = sampleMirroredBlend(halfProgress, state.cameras!.aggressiveness);
+  const rawBlend = sampleMirroredBlend(halfProgress, cameras.aggressiveness);
   const taperPower = 2.5;
   const zoomBlend = 1 - Math.pow(1 - rawBlend, taperPower);
   const zoomValue =
     mapped <= 0.5
-      ? lerp(state.cameras!.start.zoom, state.cameras!.overview.zoom, zoomBlend)
-      : lerp(state.cameras!.overview.zoom, state.cameras!.end.zoom, 1 - zoomBlend);
+      ? lerp(cameras.start.zoom, cameras.overview.zoom, zoomBlend)
+      : lerp(cameras.overview.zoom, cameras.end.zoom, 1 - zoomBlend);
 
-  state.map!.jumpTo({
+  map.jumpTo({
     center: pathCenter,
     zoom: zoomValue,
     bearing: 0,
@@ -612,7 +671,11 @@ const rendererApi: RendererApi = {
   renderFrame
 };
 
-async function handleMessage(event: MessageEvent<PostMessagePayload>): Promise<void> {
+function isPostMessageTarget(value: MessageEventSource | null): value is WindowProxy {
+  return Boolean(value && "postMessage" in value);
+}
+
+async function handleMessage(event: MessageEvent<RendererCommandMessage>): Promise<void> {
   const payload = event.data;
   if (!payload || payload.namespace !== "mapanim") {
     return;
@@ -623,21 +686,21 @@ async function handleMessage(event: MessageEvent<PostMessagePayload>): Promise<v
   try {
     switch (type) {
       case "set-scene":
-        await rendererApi.setScene(payload.scene!);
+        await rendererApi.setScene(payload.scene);
         break;
       case "prime-tiles":
         await rendererApi.primeTiles();
         break;
       case "render-frame":
-        await rendererApi.renderFrame(payload.progress ?? state.lastProgress ?? 0);
+        await rendererApi.renderFrame(payload.progress ?? state.lastProgress);
         break;
       default:
         throw new Error(`Unknown renderer command "${type}"`);
     }
 
     const origin = event.origin || "*";
-    if (event.source) {
-      (event.source as Window).postMessage(
+    if (isPostMessageTarget(event.source)) {
+      event.source.postMessage(
         {
           namespace: "mapanim",
           type: "command-complete",
@@ -646,15 +709,16 @@ async function handleMessage(event: MessageEvent<PostMessagePayload>): Promise<v
         origin
       );
     }
-  } catch (error: any) {
+  } catch (error) {
     const origin = event.origin || "*";
-    if (event.source) {
-      (event.source as Window).postMessage(
+    if (isPostMessageTarget(event.source)) {
+      const message = error instanceof Error ? error.message : String(error);
+      event.source.postMessage(
         {
           namespace: "mapanim",
           type: "command-error",
           requestId,
-          message: error.message
+          message
         },
         origin
       );
@@ -662,7 +726,7 @@ async function handleMessage(event: MessageEvent<PostMessagePayload>): Promise<v
   }
 }
 
-window.addEventListener("message", (event: MessageEvent<PostMessagePayload>) => {
+window.addEventListener("message", (event: MessageEvent<RendererCommandMessage>) => {
   void handleMessage(event);
 });
 
@@ -670,11 +734,12 @@ window.__MAP_RENDERER__ = rendererApi;
 window.__MAP_RENDERER_READY__ = true;
 
 if (window.parent && window.parent !== window) {
+  const readyMessage: RendererReadyMessage = {
+    namespace: "mapanim",
+    type: "ready"
+  };
   window.parent.postMessage(
-    {
-      namespace: "mapanim",
-      type: "ready"
-    },
+    readyMessage,
     "*"
   );
 }

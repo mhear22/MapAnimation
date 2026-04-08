@@ -1,36 +1,9 @@
 <script setup lang="ts">
-interface RenderProgress {
-  frame?: number;
-  totalFrames?: number;
-  percent?: number | null;
-}
+import type { SerializedJob } from "../types.js";
 
-interface JobSummary {
-  startLabel: string;
-  endLabel: string;
-  name: string | null;
-  mode: string;
-  mapType: string;
-}
-
-interface SerializedResult {
-  outputPath: string;
-  outputUrl: string | null;
-}
-
-interface SerializedJob {
-  id: string;
-  status: string;
-  stage: string;
-  error: string | null;
-  progress: RenderProgress | null;
-  summary: JobSummary;
-  result: SerializedResult | null;
-}
-
-defineProps({
-  jobs: { type: Array as () => SerializedJob[], required: true }
-});
+defineProps<{
+  jobs: SerializedJob[];
+}>();
 
 function describeProgress(job: SerializedJob): string {
   if (!job.progress) return job.stage;
@@ -45,7 +18,7 @@ function routeLine(job: SerializedJob): string {
   return `${start} \u2192 ${end}`;
 }
 
-function statusClass(status: string): string {
+function statusClass(status: SerializedJob["status"]): string {
   return status || "pending";
 }
 </script>

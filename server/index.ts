@@ -3,6 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RouteConfig, JobSummary, RenderJob, RenderProgress, SerializedJob } from "../types/index.js";
+import type { PresetSaveRequest } from "../types/index.js";
 import { createPresetStore } from "../lib/presets/store.js";
 import { createProviderRegistry } from "../lib/providers/index.js";
 import { createRenderQueue } from "../lib/render/queue.js";
@@ -10,14 +11,14 @@ import { createRenderAssetHandler, safeResolve } from "../lib/render/asset-handl
 import { renderRouteToVideo } from "../lib/render/video.js";
 import { prepareRoute } from "../lib/routes.js";
 import { createTileCache } from "../lib/tile-cache.js";
-import { contentTypeFor } from "../lib/utils.js";
+import { contentTypeFor, isRecord, toError } from "../lib/utils.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const webDir = path.join(rootDir, "web");
 const webappDistDir = path.join(rootDir, "webapp", "dist");
-const isDev: boolean = process.env.MAPANIM_DEV === "1";
+const isDev: boolean = process.env["MAPANIM_DEV"] === "1";
 const providerRegistry = createProviderRegistry();
 const presetStore = createPresetStore({ rootDir });
 const tileCache = createTileCache();
@@ -31,6 +32,27 @@ async function readRequestBody(request: http.IncomingMessage): Promise<unknown> 
   }
 
   return body ? JSON.parse(body) : {};
+}
+
+async function readRequestRecord(request: http.IncomingMessage): Promise<Record<string, unknown>> {
+  const body = await readRequestBody(request);
+  if (!isRecord(body)) {
+    throw new Error("Request body must be a JSON object");
+  }
+
+  return body;
+}
+
+function parseRouteConfig(value: unknown): RouteConfig {
+  if (!isRecord(value)) {
+    throw new Error("Request body must include a route object");
+  }
+
+  return value as RouteConfig;
+}
+
+function parseOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 function sendJson(response: http.ServerResponse, statusCode: number, payload: unknown): void {
@@ -132,8 +154,8 @@ async function handleApi(request: http.IncomingMessage, response: http.ServerRes
   }
 
   if (request.method === "POST" && pathname === "/api/preview") {
-    const body = await readRequestBody(request) as Record<string, unknown>;
-    const route = await prepareRoute((body.route ?? body) as RouteConfig, { providerRegistry });
+    const body = await readRequestRecord(request);
+    const route = await prepareRoute(parseRouteConfig(body["route"] ?? body), { providerRegistry });
     sendJson(response, 200, { route });
     return true;
   }
@@ -152,11 +174,11 @@ async function handleApi(request: http.IncomingMessage, response: http.ServerRes
   }
 
   if (request.method === "POST" && pathname === "/api/presets") {
-    const body = await readRequestBody(request) as Record<string, unknown>;
-    const saved = await presetStore.save({
-      name: body.name as string | undefined,
-      route: body.route as RouteConfig
-    });
+    const body = await readRequestRecord(request);
+    const route = parseRouteConfig(body["route"]);
+    const name = parseOptionalString(body["name"]);
+    const payload: PresetSaveRequest = name === undefined ? { route } : { name, route };
+    const saved = await presetStore.save(payload);
     sendJson(response, 200, saved);
     return true;
   }
@@ -167,9 +189,9 @@ async function handleApi(request: http.IncomingMessage, response: http.ServerRes
   }
 
   if (request.method === "POST" && pathname === "/api/render-jobs") {
-    const body = await readRequestBody(request) as Record<string, unknown>;
+    const body = await readRequestRecord(request);
     const job = queue.enqueue({
-      route: (body.route ?? body) as RouteConfig
+      route: parseRouteConfig(body["route"] ?? body)
     });
     sendJson(response, 202, { job: serializeJob(job) });
     return true;
@@ -209,7 +231,7 @@ function sendError(response: http.ServerResponse, error: Error): void {
 
 async function createViteDevServer(server: http.Server): Promise<import("vite").ViteDevServer> {
   const { createServer } = await import("vite");
-  process.env.MAPANIM_VITE_MIDDLEWARE = "1";
+  process.env["MAPANIM_VITE_MIDDLEWARE"] = "1";
 
   return createServer({
     configFile: path.join(rootDir, "vite.config.ts"),
@@ -290,9 +312,10 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
 
     await serveFile(response, path.join(webappDistDir, "index.html"));
   } catch (error) {
-    (vite as import("vite").ViteDevServer | undefined)?.ssrFixStacktrace?.(error as Error);
+    const resolvedError = toError(error);
+    vite?.ssrFixStacktrace?.(resolvedError);
     if (!response.headersSent) {
-      sendError(response, error as Error);
+      sendError(response, resolvedError);
       return;
     }
 
@@ -310,8 +333,8 @@ async function main(): Promise<void> {
     vite = await createViteDevServer(server);
   }
 
-  const port = Number(process.env.PORT ?? 5173);
-  const host = process.env.HOST ?? "127.0.0.1";
+  const port = Number(process.env["PORT"] ?? 5173);
+  const host = process.env["HOST"] ?? "127.0.0.1";
   const localBaseHost = host === "0.0.0.0" ? "127.0.0.1" : host;
 
   server.listen(port, host, () => {

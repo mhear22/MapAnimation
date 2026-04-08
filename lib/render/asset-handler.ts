@@ -63,7 +63,7 @@ export function matchTileRequest(pathname: string): TileMatch | null {
     return null;
   }
 
-  const [, provider, z, x, y] = match;
+  const [, provider = "", z = "0", x = "0", y = "0"] = match;
   return {
     provider,
     z: Number(z),
@@ -106,7 +106,7 @@ export function resolveRenderAssetPath(
   return null;
 }
 
-export function createRenderAssetHandler(options: CreateRenderAssetHandlerOptions = {} as CreateRenderAssetHandlerOptions): (
+export function createRenderAssetHandler(options: CreateRenderAssetHandlerOptions): (
   request: http.IncomingMessage,
   response: http.ServerResponse,
   pathnameInput?: string

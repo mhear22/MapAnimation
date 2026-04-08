@@ -24,8 +24,10 @@ test("preset store saves, lists, and reloads presets", async () => {
   assert.equal(saved.id, "preset:airport-hop");
 
   const listed: PresetItem[] = await store.list();
+  const [firstPreset] = listed;
   assert.equal(listed.length, 1);
-  assert.equal(listed[0].name, "Airport Hop");
+  assert.ok(firstPreset);
+  assert.equal(firstPreset.name, "Airport Hop");
 
   const loaded: PresetDetail = await store.get("preset:airport-hop");
   assert.equal(loaded.route.camera!.peakAltitude, 72);

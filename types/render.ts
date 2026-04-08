@@ -1,5 +1,7 @@
 import type { RouteConfig, PreparedRoute } from "./route.js";
 
+export type RenderJobStatus = "queued" | "running" | "completed" | "failed";
+
 export type RenderStage =
   | "queued"
   | "preparing"
@@ -21,7 +23,7 @@ export interface RenderProgress {
 export interface RenderJob {
   id: string;
   payload: { route: RouteConfig };
-  status: "queued" | "running" | "completed" | "failed";
+  status: RenderJobStatus;
   stage: RenderStage;
   progress: RenderProgress;
   error?: string;
@@ -37,8 +39,8 @@ export interface RenderResult {
 
 export interface SerializedJob {
   id: string;
-  status: string;
-  stage: string;
+  status: RenderJobStatus;
+  stage: RenderStage;
   error: string | null;
   progress: RenderProgress | null;
   createdAt: string;

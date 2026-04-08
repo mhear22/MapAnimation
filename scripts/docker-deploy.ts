@@ -8,7 +8,10 @@ import {
 
 const containerEngine = resolveContainerEngine();
 const gitHash = capture("git", ["rev-parse", "HEAD"]);
-const registry = ECR_REPOSITORY.split("/")[0];
+const [registry] = ECR_REPOSITORY.split("/");
+if (!registry) {
+  throw new Error(`Invalid ECR repository "${ECR_REPOSITORY}"`);
+}
 const imageRef = `${ECR_REPOSITORY}:${gitHash}`;
 
 console.log(`Logging into ${registry} with ${containerEngine}`);
