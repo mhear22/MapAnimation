@@ -1,30 +1,34 @@
-<script setup>
+<script setup lang="ts">
 import { computed, ref } from "vue";
+import type { ProviderSearchResult } from "../../types/index.js";
 
 const props = defineProps({
   label: { type: String, required: true },
   modelValue: { type: String, required: true },
-  results: { type: Array, required: true },
+  results: { type: Array as () => ProviderSearchResult[], required: true },
   loading: { type: Boolean, default: false },
   selectedLabel: { type: String, default: "" }
 });
 
-const emit = defineEmits(["update:modelValue", "select"]);
+const emit = defineEmits<{
+  (e: "update:modelValue", value: string): void;
+  (e: "select", result: ProviderSearchResult): void;
+}>();
 const open = ref(false);
 
-const showDropdown = computed(() => {
+const showDropdown = computed<boolean>(() => {
   return open.value && (props.loading || props.results.length > 0 || props.modelValue.trim().length >= 3);
 });
 
-function onInput(event) {
-  emit("update:modelValue", event.target.value);
+function onInput(event: Event): void {
+  emit("update:modelValue", (event.target as HTMLInputElement).value);
 }
 
-function onBlur() {
+function onBlur(): void {
   window.setTimeout(() => { open.value = false; }, 120);
 }
 
-function chooseResult(result) {
+function chooseResult(result: ProviderSearchResult): void {
   emit("select", result);
   open.value = false;
 }
