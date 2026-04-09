@@ -8,18 +8,22 @@ const props = withDefaults(defineProps<{
   results: ProviderSearchResult[];
   loading?: boolean;
   selectedLabel?: string;
+  modalActive?: boolean;
 }>(), {
   loading: false,
-  selectedLabel: ""
+  selectedLabel: "",
+  modalActive: false
 });
 
 const emit = defineEmits<{
   (e: "update:modelValue", value: string): void;
   (e: "select", result: ProviderSearchResult): void;
+  (e: "open-modal"): void;
 }>();
 const open = ref(false);
 
 const showDropdown = computed<boolean>(() => {
+  if (props.modalActive) return false;
   return open.value && (props.loading || props.results.length > 0 || props.modelValue.trim().length >= 3);
 });
 
@@ -52,7 +56,7 @@ function chooseResult(result: ProviderSearchResult): void {
           :value="modelValue"
           class="text-input"
           placeholder="Search for a place"
-          @focus="open = true"
+          @focus="open = true; emit('open-modal')"
           @blur="onBlur"
           @input="onInput"
         />

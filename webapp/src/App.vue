@@ -4,6 +4,7 @@ import CurveEditor from "./components/CurveEditor.vue";
 import TimingCurveEditor from "./components/TimingCurveEditor.vue";
 import RenderPreview from "./components/RenderPreview.vue";
 import SearchField from "./components/SearchField.vue";
+import LocationSearchModal from "./components/LocationSearchModal.vue";
 import type {
   CameraConfig,
   FormCamera,
@@ -138,6 +139,8 @@ const saveModalOpen = ref(false);
 const saveModalName = ref("");
 const loadModalOpen = ref(false);
 const resetModalOpen = ref(false);
+const searchModalOpen = ref(false);
+const searchModalKind = ref<SearchKind>("start");
 const presets = ref<PresetItem[]>([]);
 const jobs = ref<SerializedJob[]>([]);
 const searchState = reactive<SearchState>({
@@ -331,6 +334,24 @@ function applySearchResult(kind: "start" | "end", result: ProviderSearchResult):
   route[kind] = { label: result.label, query: result.query, coords: result.coords };
   setSearchResults(kind, []);
   schedulePreview(0);
+}
+
+function openSearchModal(kind: SearchKind): void {
+  searchModalKind.value = kind;
+  searchModalOpen.value = true;
+}
+
+function closeSearchModal(): void {
+  searchModalOpen.value = false;
+}
+
+function onSearchModalQueryUpdate(value: string): void {
+  updateLocationQuery(searchModalKind.value, value);
+}
+
+function onSearchModalSelect(result: ProviderSearchResult): void {
+  applySearchResult(searchModalKind.value, result);
+  closeSearchModal();
 }
 
 function updateLocationQuery(kind: "start" | "end", query: string): void {
@@ -556,8 +577,10 @@ onBeforeUnmount(() => {
               :results="searchState.startResults"
               :loading="searchState.startLoading"
               :selected-label="route.start.label"
+              :modal-active="searchModalOpen && searchModalKind === 'start'"
               @update:model-value="updateLocationQuery('start', $event)"
               @select="applySearchResult('start', $event)"
+              @open-modal="openSearchModal('start')"
             />
             <SearchField
               :model-value="route.end.query"
@@ -565,8 +588,10 @@ onBeforeUnmount(() => {
               :results="searchState.endResults"
               :loading="searchState.endLoading"
               :selected-label="route.end.label"
+              :modal-active="searchModalOpen && searchModalKind === 'end'"
               @update:model-value="updateLocationQuery('end', $event)"
               @select="applySearchResult('end', $event)"
+              @open-modal="openSearchModal('end')"
             />
             <div class="field-row">
               <label class="field">
@@ -751,6 +776,18 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+
+      <!-- Location Search Modal -->
+      <LocationSearchModal
+        :open="searchModalOpen"
+        :label="searchModalKind === 'start' ? 'Origin' : 'Destination'"
+        :query="searchModalKind === 'start' ? route.start.query : route.end.query"
+        :results="searchModalKind === 'start' ? searchState.startResults : searchState.endResults"
+        :loading="searchModalKind === 'start' ? searchState.startLoading : searchState.endLoading"
+        @update:query="onSearchModalQueryUpdate"
+        @select="onSearchModalSelect"
+        @close="closeSearchModal"
+      />
     </Teleport>
   </div>
 </template>

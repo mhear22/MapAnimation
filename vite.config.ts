@@ -14,6 +14,7 @@ export default defineConfig(() => ({
           "/api": apiBaseUrl,
           "/render": apiBaseUrl,
           "/output": apiBaseUrl,
+          "/tiles": apiBaseUrl,
           "/node_modules/maplibre-gl": apiBaseUrl
         }
       },
