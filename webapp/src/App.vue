@@ -50,7 +50,12 @@ function createDefaultRoute(): RouteFormData {
       timingCurve: 50,
       timingInverted: false,
       clipPath: false
-    }
+    },
+    avatarScale: 1,
+    avatarBorderWidth: 3,
+    avatarBorderColor: "#ffffff",
+    avatarBgColor: "",
+    avatarShape: "circle" as const
   };
 }
 
@@ -140,6 +145,7 @@ const saveModalName = ref("");
 const loadModalOpen = ref(false);
 const resetModalOpen = ref(false);
 const searchModalOpen = ref(false);
+const avatarModalOpen = ref(false);
 const searchModalKind = ref<SearchKind>("start");
 const presets = ref<PresetItem[]>([]);
 const jobs = ref<SerializedJob[]>([]);
@@ -149,6 +155,34 @@ const searchState = reactive<SearchState>({
   startLoading: false,
   endLoading: false
 });
+const avatarPreviewUrl = computed<string | null>(() => route.avatarUrl ?? null);
+
+function handleAvatarUpload(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  if (!file.type.match(/^image\/(png|jpeg|jpg|webp)$/)) return;
+  if (file.size > 2 * 1024 * 1024) return;
+  const reader = new FileReader();
+  reader.onload = () => { route.avatarUrl = reader.result as string; };
+  reader.readAsDataURL(file);
+}
+
+function clearAvatar(): void {
+  route.avatarUrl = undefined;
+}
+
+function avatarPreviewRadius(shape?: string): string {
+  if (shape === "square") return "0";
+  if (shape === "rounded") return "22%";
+  return "50%";
+}
+
+const avatarBgTransparent = computed({
+  get: () => !route.avatarBgColor,
+  set: (v: boolean) => { route.avatarBgColor = v ? "" : "#ffffff"; }
+});
+
 const sidebarOpen = ref(false);
 const queueOpen = ref(false);
 const infoOpen = ref(false);
@@ -577,6 +611,19 @@ onBeforeUnmount(() => {
               <span class="field-label">Route name</span>
               <input v-model="route.name" class="text-input" placeholder="e.g. Airport hop" />
             </label>
+            <label class="field">
+              <span class="field-label">Avatar marker</span>
+              <div class="avatar-upload-row">
+                <button v-if="avatarPreviewUrl" type="button" class="avatar-preview-wrap" @click="avatarModalOpen = true" title="Edit avatar">
+                  <img :src="avatarPreviewUrl" class="avatar-preview-thumb" alt="Avatar" />
+                </button>
+                <label v-else class="avatar-upload-btn">
+                  <span>Choose image</span>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" class="avatar-file-input" @change="handleAvatarUpload" />
+                </label>
+              </div>
+              <span class="field-hint">PNG/JPG, shown as a circle on the route</span>
+            </label>
           </div>
         </div>
 
@@ -788,6 +835,62 @@ onBeforeUnmount(() => {
           <div class="modal-actions">
             <button type="button" class="btn" @click="resetModalOpen = false">Cancel</button>
             <button type="button" class="btn btn-danger" @click="confirmReset">Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Avatar Config Modal -->
+      <div v-if="avatarModalOpen" class="modal-backdrop" @click.self="avatarModalOpen = false">
+        <div class="modal">
+          <h3 class="modal-title">Avatar Settings</h3>
+          <div class="avatar-modal-preview">
+            <img v-if="avatarPreviewUrl" :src="avatarPreviewUrl" alt="Avatar preview"
+              :style="{
+                width: Math.round(40 * (route.avatarScale ?? 1)) + 'px',
+                height: Math.round(40 * (route.avatarScale ?? 1)) + 'px',
+                borderRadius: avatarPreviewRadius(route.avatarShape),
+                objectFit: 'cover',
+                border: (route.avatarBorderWidth ?? 3) + 'px solid ' + (route.avatarBorderColor ?? '#ffffff'),
+                background: route.avatarBgColor || 'transparent'
+              }"
+            />
+          </div>
+          <label class="field">
+            <span class="field-label">Shape</span>
+            <select v-model="route.avatarShape" class="select-input">
+              <option value="circle">Circle</option>
+              <option value="square">Square</option>
+              <option value="rounded">Rounded square</option>
+            </select>
+          </label>
+          <div class="field-row">
+            <label class="field">
+              <span class="field-label">Scale</span>
+              <input v-model.number="route.avatarScale" class="text-input" type="number" min="0.5" max="2" step="0.1" />
+            </label>
+            <label class="field">
+              <span class="field-label">Border width</span>
+              <input v-model.number="route.avatarBorderWidth" class="text-input" type="number" min="0" max="6" step="0.5" />
+            </label>
+          </div>
+          <label class="field">
+            <span class="field-label">Border color</span>
+            <input v-model="route.avatarBorderColor" class="text-input" type="color" />
+          </label>
+          <label class="field">
+            <span class="field-label">Background</span>
+            <div class="avatar-bg-row">
+              <input v-model="route.avatarBgColor" class="text-input" type="color" :disabled="avatarBgTransparent" />
+              <label class="avatar-transparent-toggle">
+                <input type="checkbox" v-model="avatarBgTransparent" />
+                <span>Transparent</span>
+              </label>
+            </div>
+            <span class="field-hint">For images with transparent backgrounds</span>
+          </label>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-danger" @click="clearAvatar(); avatarModalOpen = false">Remove</button>
+            <button type="button" class="btn btn-primary" @click="avatarModalOpen = false">Done</button>
           </div>
         </div>
       </div>

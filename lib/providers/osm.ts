@@ -75,12 +75,12 @@ async function requestJson<T = unknown>(url: URL, { retries = 3 }: { retries?: n
   throw lastError;
 }
 
-export function createOsmProvider(): Provider {
+export function createOsmProvider(baseUrl: string = "https://nominatim.openstreetmap.org"): Provider {
   return {
     id: "osm",
 
     async search(query: string, { limit = 5 }: { limit?: number } = {}): Promise<ProviderSearchResult[]> {
-      const url = new URL("https://nominatim.openstreetmap.org/search");
+      const url = new URL("/search", baseUrl);
       url.searchParams.set("format", "jsonv2");
       url.searchParams.set("limit", String(limit));
       url.searchParams.set("addressdetails", "1");

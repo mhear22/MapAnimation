@@ -60,6 +60,12 @@ export interface RouteConfig {
   peakAltitude?: number;
   curvePosition?: number;
   cameraSmoothing?: number;
+  avatarUrl?: string;
+  avatarScale?: number;
+  avatarBorderWidth?: number;
+  avatarBorderColor?: string;
+  avatarBgColor?: string;
+  avatarShape?: "circle" | "square" | "rounded";
 }
 
 export interface PreparedRoute extends RouteConfig {

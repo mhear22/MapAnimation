@@ -2,7 +2,8 @@ import { createOsmProvider } from "./osm.js";
 import type { Provider, ProviderRegistry } from "../../types/index.js";
 
 export function createProviderRegistry(): ProviderRegistry {
-  const providers = new Map<string, Provider>([["osm", createOsmProvider()]]);
+  const nominatimUrl = process.env["NOMINATIM_URL"] ?? "https://nominatim.openstreetmap.org";
+  const providers = new Map<string, Provider>([["osm", createOsmProvider(nominatimUrl)]]);
 
   return {
     defaultProvider: "osm",

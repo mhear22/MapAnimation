@@ -3,6 +3,7 @@ const state = {
   map: null,
   scene: null,
   markers: [],
+  avatarMarker: null,
   cameras: null,
   mapType: null,
   lastProgress: 0
@@ -423,6 +424,34 @@ function removeMarkers() {
     marker.remove();
   }
   state.markers = [];
+  removeAvatarMarker();
+}
+function removeAvatarMarker() {
+  if (state.avatarMarker) {
+    state.avatarMarker.remove();
+    state.avatarMarker = null;
+  }
+}
+function avatarBorderRadius(shape) {
+  if (shape === "square") return "0";
+  if (shape === "rounded") return "22%";
+  return "50%";
+}
+function createAvatarMarkerElement(avatarUrl, scale, borderWidth, borderColor, bgColor, shape) {
+  const size = Math.round(40 * scale);
+  const container = document.createElement("div");
+  container.className = "avatar-marker";
+  container.style.width = `${size}px`;
+  container.style.height = `${size}px`;
+  container.style.border = `${borderWidth}px solid ${borderColor}`;
+  container.style.borderRadius = avatarBorderRadius(shape);
+  container.style.background = bgColor || "transparent";
+  const img = document.createElement("img");
+  img.src = avatarUrl;
+  img.alt = "Avatar";
+  img.draggable = false;
+  container.appendChild(img);
+  return container;
 }
 async function setScene(scene) {
   await setupMap();
@@ -499,6 +528,19 @@ async function setScene(scene) {
       offset: [12, -18]
     }).setLngLat(scene.to.coords).addTo(map)
   );
+  if (scene.avatarUrl && state.cameras) {
+    const scale = scene.avatarScale ?? 1;
+    const borderWidth = scene.avatarBorderWidth ?? 3;
+    const borderColor = scene.avatarBorderColor ?? "#ffffff";
+    const bgColor = scene.avatarBgColor ?? "";
+    const shape = scene.avatarShape ?? "circle";
+    const avatarElement = createAvatarMarkerElement(scene.avatarUrl, scale, borderWidth, borderColor, bgColor, shape);
+    const startPosition = samplePath(state.cameras.routePath, 0);
+    state.avatarMarker = new maplibregl.Marker({
+      element: avatarElement,
+      anchor: "center"
+    }).setLngLat(startPosition).addTo(map);
+  }
   map.jumpTo({
     center: scene.from.coords,
     zoom: startZoom,
@@ -543,8 +585,12 @@ async function renderFrame(progress) {
     bearing: 0,
     pitch: 0
   });
+  const pathProgress = 0.5 - 0.5 * Math.cos(eased * Math.PI);
+  if (state.avatarMarker) {
+    const avatarPosition = samplePath(cameras.routePath, pathProgress);
+    state.avatarMarker.setLngLat(avatarPosition);
+  }
   if (cameras.clipPath && state.scene) {
-    const pathProgress = 0.5 - 0.5 * Math.cos(eased * Math.PI);
     const clippedCoords = clipCoordinatesToProgress(cameras.routePath, pathProgress);
     const routeSource = getRouteSource(map);
     routeSource.setData({

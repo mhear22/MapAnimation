@@ -63,6 +63,12 @@ export interface RouteFormData {
   end: FormLocation;
   path: RouteConfig["path"] | null;
   camera: FormCamera;
+  avatarUrl?: string;
+  avatarScale?: number;
+  avatarBorderWidth?: number;
+  avatarBorderColor?: string;
+  avatarBgColor?: string;
+  avatarShape?: "circle" | "square" | "rounded";
 }
 
 export interface RouteApplyInput {
@@ -84,6 +90,12 @@ export interface RouteApplyInput {
   from?: Partial<FormLocation> | LocationSpec;
   to?: Partial<FormLocation> | LocationSpec;
   camera?: Partial<FormCamera & CameraConfig>;
+  avatarUrl?: string;
+  avatarScale?: number;
+  avatarBorderWidth?: number;
+  avatarBorderColor?: string;
+  avatarBgColor?: string;
+  avatarShape?: "circle" | "square" | "rounded";
 }
 
 export interface SearchState {
