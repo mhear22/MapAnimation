@@ -466,10 +466,11 @@ async function setScene(scene) {
   removeMarkers();
   state.scene = scene;
   const routeSource = getRouteSource(map);
+  const lineFeature = scene.camera.clipPath && scene.path?.coordinates?.length ? { type: "Feature", geometry: { type: "LineString", coordinates: [scene.path.coordinates[0], scene.path.coordinates[0]] }, properties: {} } : buildLineFeature(scene);
   routeSource.setData({
     type: "FeatureCollection",
     features: [
-      buildLineFeature(scene),
+      lineFeature,
       buildPointFeature(scene.from, "start"),
       buildPointFeature(scene.to, "end")
     ]
@@ -591,22 +592,25 @@ async function renderFrame(progress) {
     state.avatarMarker.setLngLat(avatarPosition);
   }
   if (cameras.clipPath && state.scene) {
-    const clippedCoords = clipCoordinatesToProgress(cameras.routePath, pathProgress);
+    const clipProgress = Math.min(1, Math.max(0, (pathProgress - 0.05) / 0.9));
+    const clippedCoords = clipCoordinatesToProgress(cameras.routePath, clipProgress);
     const routeSource = getRouteSource(map);
+    const features = [];
+    if (clippedCoords.length >= 2) {
+      features.push({
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: clippedCoords
+        },
+        properties: {}
+      });
+    }
+    features.push(buildPointFeature(state.scene.from, "start"));
+    features.push(buildPointFeature(state.scene.to, "end"));
     routeSource.setData({
       type: "FeatureCollection",
-      features: [
-        {
-          type: "Feature",
-          geometry: {
-            type: "LineString",
-            coordinates: clippedCoords.length >= 2 ? clippedCoords : state.scene.path?.coordinates?.length ? state.scene.path.coordinates : [state.scene.from.coords, state.scene.to.coords]
-          },
-          properties: {}
-        },
-        buildPointFeature(state.scene.from, "start"),
-        buildPointFeature(state.scene.to, "end")
-      ]
+      features
     });
   }
   await new Promise((resolve) => requestAnimationFrame(() => resolve()));
