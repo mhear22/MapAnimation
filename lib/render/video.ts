@@ -11,6 +11,7 @@ interface RenderRouteToVideoOptions {
   renderBaseUrl: string;
   providerRegistry?: ProviderRegistry;
   onProgress?: (progress: Partial<RenderProgress>) => void;
+  signal?: AbortSignal;
 }
 
 async function ensureOutputDir(rootDir: string, filePath: string): Promise<void> {
@@ -25,8 +26,15 @@ export async function renderRouteToVideo(
     rootDir,
     renderBaseUrl,
     providerRegistry,
-    onProgress
+    onProgress,
+    signal
   } = options;
+
+  function checkAborted(): void {
+    if (signal?.aborted) {
+      throw new DOMException("Render cancelled", "AbortError");
+    }
+  }
 
   onProgress?.({ stage: "preparing" });
   const route = await prepareRoute(
@@ -35,6 +43,8 @@ export async function renderRouteToVideo(
   );
 
   let browser: Browser | undefined;
+  let ffmpegProcess: ChildProcess | undefined;
+  let ffmpegExited = false;
 
   try {
     browser = await chromium.launch();
@@ -57,6 +67,7 @@ export async function renderRouteToVideo(
     });
 
     onProgress?.({ stage: "priming_tiles" });
+    checkAborted();
     await page.evaluate(async (scene: PreparedRoute) => {
       const rendererWindow = window as Window & RendererWindow;
       const renderer = rendererWindow.__MAP_RENDERER__;
@@ -88,14 +99,13 @@ export async function renderRouteToVideo(
       outputPath
     ];
 
-    const ffmpegProcess: ChildProcess = spawn("ffmpeg", ffmpegArgs, { cwd: rootDir });
+    ffmpegProcess = spawn("ffmpeg", ffmpegArgs, { cwd: rootDir });
     const ffmpegStdin = ffmpegProcess.stdin!;
     ffmpegStdin.on("error", () => {});
     ffmpegProcess.stdout!.on("data", () => {});
     ffmpegProcess.stderr!.on("data", () => {});
 
     let ffmpegExitCode: number | null = null;
-    let ffmpegExited = false;
 
     ffmpegProcess.on("exit", (code: number | null) => {
       ffmpegExitCode = code;
@@ -105,6 +115,7 @@ export async function renderRouteToVideo(
     onProgress?.({ stage: "capturing_frames", percent: 0 });
 
     for (let frame = 0; frame < totalFrames; frame += 1) {
+      checkAborted();
       const progress = totalFrames === 1 ? 1 : frame / (totalFrames - 1);
       await page.evaluate(async (value: number) => {
         const rendererWindow = window as Window & RendererWindow;
@@ -145,6 +156,7 @@ export async function renderRouteToVideo(
     }
 
     onProgress?.({ stage: "encoding_video", percent: 0 });
+    checkAborted();
     ffmpegStdin.end();
 
     await new Promise<void>((resolve, reject) => {
@@ -178,6 +190,10 @@ export async function renderRouteToVideo(
       route
     };
   } finally {
+    if (signal?.aborted && ffmpegProcess && !ffmpegExited) {
+      ffmpegProcess.kill("SIGKILL");
+    }
+
     if (browser) {
       await browser.close();
     }

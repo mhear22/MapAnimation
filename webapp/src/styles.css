@@ -1092,6 +1092,43 @@ a:hover {
   text-decoration: none;
 }
 
+.queue-item[data-status="cancelled"] {
+  opacity: 0.5;
+}
+
+.queue-status-badge.cancelled {
+  background: var(--line-subtle);
+  color: var(--text-tertiary);
+}
+
+.queue-item-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.queue-cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--danger-muted);
+  color: var(--danger);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.queue-cancel-btn:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
 /* ─── Presets ──────────────────────────────────────────── */
 
 .preset-item {

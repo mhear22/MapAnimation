@@ -313,6 +313,12 @@ async function queueRender(): Promise<void> {
   });
 }
 
+async function cancelRender(jobId: string): Promise<void> {
+  await requestJson(`/api/render-jobs/${encodeURIComponent(jobId)}`, {
+    method: "DELETE"
+  });
+}
+
 function resetRoute(): void {
   applyRoute(createDefaultRoute());
   presetName.value = "";
@@ -519,7 +525,15 @@ onBeforeUnmount(() => {
                   <div class="queue-bar-fill" :style="{ width: `${Math.max(4, job.progress.percent)}%` }" />
                 </div>
                 <div v-if="job.error" class="queue-error">{{ job.error }}</div>
-                <a
+                <div class="queue-item-actions">
+                  <button
+                    v-if="job.status === 'queued' || job.status === 'running'"
+                    type="button"
+                    class="queue-cancel-btn"
+                    title="Cancel render"
+                    @click="cancelRender(job.id)"
+                  >&times;</button>
+                  <a
                   v-if="job.result?.outputUrl"
                   class="queue-link"
                   :href="job.result.outputUrl"
@@ -529,6 +543,7 @@ onBeforeUnmount(() => {
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
                   Open MP4
                 </a>
+                </div>
               </article>
             </div>
           </div>

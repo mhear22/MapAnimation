@@ -1,6 +1,6 @@
 import type { RouteConfig, PreparedRoute } from "./route.js";
 
-export type RenderJobStatus = "queued" | "running" | "completed" | "failed";
+export type RenderJobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export type RenderStage =
   | "queued"
@@ -9,7 +9,8 @@ export type RenderStage =
   | "capturing_frames"
   | "encoding_video"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export interface RenderProgress {
   stage: RenderStage;

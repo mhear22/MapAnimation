@@ -115,12 +115,13 @@ function broadcastJobs(queue: ReturnType<typeof createRenderQueue>): void {
 }
 
 const queue = createRenderQueue({
-  worker: async (payload: { route: RouteConfig }, emitProgress: (progress: Partial<RenderProgress>) => void) =>
+  worker: async (payload: { route: RouteConfig }, emitProgress: (progress: Partial<RenderProgress>) => void, signal: AbortSignal) =>
     renderRouteToVideo(payload.route, {
       rootDir,
       renderBaseUrl: `${baseUrl}/render/`,
       providerRegistry,
-      onProgress: emitProgress
+      onProgress: emitProgress,
+      signal
     })
 });
 
@@ -194,6 +195,17 @@ async function handleApi(request: http.IncomingMessage, response: http.ServerRes
       route: parseRouteConfig(body["route"] ?? body)
     });
     sendJson(response, 202, { job: serializeJob(job) });
+    return true;
+  }
+
+  if (request.method === "DELETE" && pathname.startsWith("/api/render-jobs/")) {
+    const jobId = decodeURIComponent(pathname.replace("/api/render-jobs/", ""));
+    const cancelled = queue.cancel(jobId);
+    if (!cancelled) {
+      sendJson(response, 404, { error: "Job not found or not cancellable" });
+      return true;
+    }
+    sendJson(response, 200, { cancelled: true });
     return true;
   }
 
