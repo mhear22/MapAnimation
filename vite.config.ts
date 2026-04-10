@@ -15,6 +15,7 @@ export default defineConfig(() => ({
           "/render": apiBaseUrl,
           "/output": apiBaseUrl,
           "/tiles": apiBaseUrl,
+          "/tile-cache-sw.js": apiBaseUrl,
           "/node_modules/maplibre-gl": apiBaseUrl
         }
       },

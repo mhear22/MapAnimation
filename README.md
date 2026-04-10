@@ -93,6 +93,29 @@ The older top-level `startZoom`, `endZoom`, and `cameraSmoothing` fields still w
 
 The repo now includes a root `Dockerfile` that works with Docker or Podman because it uses a standard OCI image layout. It installs Chromium for Playwright, `ffmpeg` for encoding, runs the test suite during the image build, builds the Vue app, and starts the packaged server on port `5173`.
 
+If you want to run the app with Compose, use [docker-compose.yml](./docker-compose.yml).
+
+Start it with:
+
+```bash
+mkdir -p output presets .tile-cache
+podman compose up --build
+```
+
+Then open [http://127.0.0.1:5173](http://127.0.0.1:5173).
+
+If you prefer Docker, the equivalent command is:
+
+```bash
+docker compose up --build
+```
+
+Stop it with:
+
+```bash
+podman compose down
+```
+
 Build and run the container locally:
 
 ```bash
@@ -115,5 +138,5 @@ Notes:
 
 - `--ipc=host` is recommended for Chromium stability in containers.
 - The `:Z` suffix is useful on SELinux-enabled Podman hosts.
-- Mounting `output/`, `presets/`, and `routes.json` keeps your renders and local data outside the container image.
+- Mounting `output/`, `presets/`, `.tile-cache`, and `routes.json` keeps your renders, cached tiles, and local data outside the container image.
 - If you still want the older split workflow, `npm run dev:webapp` can proxy to a separately started backend from `npm run dev:server` using `MAPANIM_API_PORT`.

@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, ref, watch } from "vue";
 import maplibregl from "maplibre-gl";
 import type { ProviderSearchResult } from "../types.js";
+import { ensureTileCacheReady } from "../tile-cache.js";
 
 const props = withDefaults(defineProps<{
   open: boolean;
@@ -87,8 +88,9 @@ function syncMarkers(): void {
   }
 }
 
-function initMap(): void {
+async function initMap(): Promise<void> {
   if (!mapContainer.value) return;
+  await ensureTileCacheReady();
 
   map = new maplibregl.Map({
     container: mapContainer.value,
@@ -120,7 +122,7 @@ function destroyMap(): void {
 watch(() => props.open, async (isOpen: boolean) => {
   if (isOpen) {
     await nextTick();
-    initMap();
+    await initMap();
   } else {
     destroyMap();
     highlightedId.value = null;

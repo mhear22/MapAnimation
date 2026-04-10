@@ -1,1 +1,1 @@
-{"root":["./webapp/src/main.ts","./webapp/src/types.ts","./webapp/env.d.ts","./types/api.ts","./types/index.ts","./types/provider.ts","./types/render.ts","./types/route.ts","./types/web.ts"],"version":"6.0.2"}
+{"root":["./webapp/src/main.ts","./webapp/src/tile-cache.ts","./webapp/src/types.ts","./webapp/env.d.ts","./types/api.ts","./types/index.ts","./types/provider.ts","./types/render.ts","./types/route.ts","./types/web.ts"],"version":"6.0.2"}

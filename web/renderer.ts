@@ -53,6 +53,27 @@ const state: RendererState = {
   lastProgress: 0
 };
 
+let tileCacheReadyPromise: Promise<void> | null = null;
+
+async function ensureTileCacheReady(): Promise<void> {
+  if (tileCacheReadyPromise) {
+    return tileCacheReadyPromise;
+  }
+
+  tileCacheReadyPromise = (async () => {
+    if (!("serviceWorker" in navigator) || !window.isSecureContext) {
+      return;
+    }
+
+    await navigator.serviceWorker.register("/tile-cache-sw.js", { scope: "/" });
+    await navigator.serviceWorker.ready;
+  })().catch((error: unknown) => {
+    console.warn("Tile cache service worker registration failed", error);
+  });
+
+  return tileCacheReadyPromise;
+}
+
 function buildBaseStyle(mapType = "satellite"): StyleSpecification {
   if (mapType === "standard") {
     return {
@@ -209,8 +230,11 @@ function buildPointFeature(location: { coords: [number, number] }, kind: string)
 
 function computeBounds(coordinates: [number, number][]) {
   const bounds = new maplibregl.LngLatBounds(coordinates[0], coordinates[0]);
-  for (const coordinate of coordinates.slice(1)) {
-    bounds.extend(coordinate);
+  for (let index = 1; index < coordinates.length; index += 1) {
+    const coordinate = coordinates[index];
+    if (coordinate) {
+      bounds.extend(coordinate);
+    }
   }
   return bounds;
 }
@@ -338,6 +362,23 @@ function buildCameraPathSampler(coordinates: [number, number][], smoothing = 0.9
   return buildPathSampler(smoothCoordinates(resampled, passes, radius));
 }
 
+function findSegmentIndex(path: PathSampler, target: number): number {
+  let low = 1;
+  let high = path.cumulative.length - 1;
+
+  while (low < high) {
+    const mid = low + ((high - low) >> 1);
+    const segmentEnd = path.cumulative[mid] ?? Number.POSITIVE_INFINITY;
+    if (target <= segmentEnd) {
+      high = mid;
+    } else {
+      low = mid + 1;
+    }
+  }
+
+  return low;
+}
+
 function samplePath(path: PathSampler, progress: number): [number, number] {
   const firstCoordinate = path.coordinates[0];
   if (!firstCoordinate) {
@@ -349,21 +390,16 @@ function samplePath(path: PathSampler, progress: number): [number, number] {
   }
 
   const target = path.total * clamp(progress, 0, 1);
+  const index = findSegmentIndex(path, target);
+  const segmentEnd = path.cumulative[index];
+  const segmentStart = path.cumulative[index - 1];
+  const from = path.coordinates[index - 1];
+  const to = path.coordinates[index];
 
-  for (let index = 1; index < path.cumulative.length; index += 1) {
-    const segmentEnd = path.cumulative[index];
-    const segmentStart = path.cumulative[index - 1];
-    const from = path.coordinates[index - 1];
-    const to = path.coordinates[index];
-    if (segmentEnd === undefined || segmentStart === undefined || !from || !to) {
-      continue;
-    }
-
-    if (target <= segmentEnd) {
-      const segmentLength = segmentEnd - segmentStart || 1;
-      const segmentProgress = (target - segmentStart) / segmentLength;
-      return lerpPoint(from, to, segmentProgress);
-    }
+  if (segmentEnd !== undefined && segmentStart !== undefined && from && to) {
+    const segmentLength = segmentEnd - segmentStart || 1;
+    const segmentProgress = (target - segmentStart) / segmentLength;
+    return lerpPoint(from, to, segmentProgress);
   }
 
   return path.coordinates[path.coordinates.length - 1] ?? firstCoordinate;
@@ -379,23 +415,18 @@ function clipCoordinatesToProgress(path: PathSampler, progress: number): [number
   if (progress >= 1) return [...path.coordinates];
 
   const target = path.total * progress;
+  const index = findSegmentIndex(path, target);
+  const segmentEnd = path.cumulative[index];
+  const segmentStart = path.cumulative[index - 1];
+  const from = path.coordinates[index - 1];
+  const to = path.coordinates[index];
 
-  for (let index = 1; index < path.cumulative.length; index += 1) {
-    const segmentEnd = path.cumulative[index];
-    const segmentStart = path.cumulative[index - 1];
-    const from = path.coordinates[index - 1];
-    const to = path.coordinates[index];
-    if (segmentEnd === undefined || segmentStart === undefined || !from || !to) {
-      continue;
-    }
-
-    if (target <= segmentEnd) {
-      const segmentLength = segmentEnd - segmentStart || 1;
-      const segmentProgress = (target - segmentStart) / segmentLength;
-      const clipped: [number, number][] = path.coordinates.slice(0, index).map((c) => [...c] as [number, number]);
-      clipped.push(lerpPoint(from, to, segmentProgress));
-      return clipped;
-    }
+  if (segmentEnd !== undefined && segmentStart !== undefined && from && to) {
+    const segmentLength = segmentEnd - segmentStart || 1;
+    const segmentProgress = (target - segmentStart) / segmentLength;
+    const clipped = path.coordinates.slice(0, index);
+    clipped.push(lerpPoint(from, to, segmentProgress));
+    return clipped;
   }
 
   return [...path.coordinates];
@@ -526,6 +557,8 @@ async function setupMap(): Promise<void> {
     return;
   }
 
+  await ensureTileCacheReady();
+
   state.map = new maplibregl.Map({
     container: "map",
     style: buildBaseStyle("satellite"),
@@ -610,8 +643,9 @@ async function setScene(scene: PreparedRoute): Promise<void> {
   state.scene = scene;
 
   const routeSource = getRouteSource(map);
-  const lineFeature = (scene.camera.clipPath && scene.path?.coordinates?.length)
-    ? { type: "Feature" as const, geometry: { type: "LineString" as const, coordinates: [scene.path.coordinates[0], scene.path.coordinates[0]] }, properties: {} }
+  const clippedStart = scene.path?.coordinates?.[0];
+  const lineFeature = (scene.camera.clipPath && clippedStart)
+    ? { type: "Feature" as const, geometry: { type: "LineString" as const, coordinates: [clippedStart, clippedStart] }, properties: {} }
     : buildLineFeature(scene);
   routeSource.setData({
     type: "FeatureCollection",
@@ -736,8 +770,8 @@ async function renderFrame(progress: number): Promise<void> {
   const holdOut = 0.08;
   const mapped = clamp((progress - holdIn) / (1 - holdIn - holdOut), 0, 1);
   const eased = sampleTimingEasing(mapped, cameras.timingCurve / 100, cameras.timingInverted);
-
-  const pathCenter = samplePath(cameras.cameraPath, 0.5 - 0.5 * Math.cos(eased * Math.PI));
+  const pathProgress = 0.5 - 0.5 * Math.cos(eased * Math.PI);
+  const pathCenter = samplePath(cameras.cameraPath, pathProgress);
 
   const halfProgress = 1 - Math.abs(mapped - 0.5) * 2;
   const rawBlend = sampleMirroredBlend(halfProgress, cameras.aggressiveness);
@@ -754,8 +788,6 @@ async function renderFrame(progress: number): Promise<void> {
     bearing: 0,
     pitch: 0
   });
-
-  const pathProgress = 0.5 - 0.5 * Math.cos(eased * Math.PI);
 
   if (state.avatarMarker) {
     const avatarPosition = samplePath(cameras.routePath, pathProgress);

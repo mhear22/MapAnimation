@@ -100,14 +100,15 @@ export async function renderRouteToVideo(
     ];
 
     ffmpegProcess = spawn("ffmpeg", ffmpegArgs, { cwd: rootDir });
-    const ffmpegStdin = ffmpegProcess.stdin!;
+    const activeFfmpegProcess = ffmpegProcess;
+    const ffmpegStdin = activeFfmpegProcess.stdin!;
     ffmpegStdin.on("error", () => {});
-    ffmpegProcess.stdout!.on("data", () => {});
-    ffmpegProcess.stderr!.on("data", () => {});
+    activeFfmpegProcess.stdout!.on("data", () => {});
+    activeFfmpegProcess.stderr!.on("data", () => {});
 
     let ffmpegExitCode: number | null = null;
 
-    ffmpegProcess.on("exit", (code: number | null) => {
+    activeFfmpegProcess.on("exit", (code: number | null) => {
       ffmpegExitCode = code;
       ffmpegExited = true;
     });
@@ -140,10 +141,10 @@ export async function renderRouteToVideo(
           const onExit = () => { cleanup(); resolve(); };
           const cleanup = () => {
             ffmpegStdin.removeListener("drain", onDrain);
-            ffmpegProcess.removeListener("exit", onExit);
+            activeFfmpegProcess.removeListener("exit", onExit);
           };
           ffmpegStdin.once("drain", onDrain);
-          ffmpegProcess.once("exit", onExit);
+          activeFfmpegProcess.once("exit", onExit);
         });
       }
 
@@ -169,7 +170,7 @@ export async function renderRouteToVideo(
         return;
       }
 
-      ffmpegProcess.on("exit", (code: number | null) => {
+      activeFfmpegProcess.on("exit", (code: number | null) => {
         if (code === 0) {
           resolve();
         } else {
@@ -177,7 +178,7 @@ export async function renderRouteToVideo(
         }
       });
 
-      ffmpegProcess.on("error", reject);
+      activeFfmpegProcess.on("error", reject);
     });
 
     onProgress?.({

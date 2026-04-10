@@ -1,0 +1,18 @@
+services:
+  mapanim:
+    container_name: mapanim
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mapanim:local
+    ipc: host
+    environment:
+      HOST: 0.0.0.0
+      PORT: 5173
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./output:/app/output
+      - ./presets:/app/presets
+      - ./.tile-cache:/app/.tile-cache
+      - ./routes.json:/app/routes.json

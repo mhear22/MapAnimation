@@ -15,6 +15,10 @@ test("resolveRenderAssetPath maps mounted render routes to web assets", () => {
     resolveRenderAssetPath("/render/renderer.js", { rootDir, webDir, mountPath: "/render", allowOutput: true }),
     path.join(webDir, "renderer.js")
   );
+  assert.equal(
+    resolveRenderAssetPath("/tile-cache-sw.js", { rootDir, webDir, mountPath: "/render", allowOutput: true }),
+    path.join(webDir, "tile-cache-sw.js")
+  );
 });
 
 test("resolveRenderAssetPath maps root-mounted render routes for the CLI asset server", () => {

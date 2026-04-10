@@ -32,9 +32,14 @@ interface TileCache {
   cacheDir: string;
 }
 
+interface TileResult {
+  buffer: Buffer;
+  cacheStatus: "hit" | "miss";
+}
+
 export function createTileCache({ cacheDir }: { cacheDir?: string } = {}): TileCache {
   const dir = cacheDir ?? path.resolve(process.cwd(), ".tile-cache");
-  const inflight = new Map<string, Promise<Buffer>>();
+  const inflight = new Map<string, Promise<TileResult>>();
 
   function getTileProviderConfig(provider: string): TileProviderConfig {
     const config = TILE_PROVIDERS[provider];
@@ -57,11 +62,14 @@ export function createTileCache({ cacheDir }: { cacheDir?: string } = {}): TileC
       .replace("{y}", String(y));
   }
 
-  async function getTile(provider: string, z: number, x: number, y: number): Promise<Buffer> {
+  async function getTileResult(provider: string, z: number, x: number, y: number): Promise<TileResult> {
     const filePath = cachePath(provider, z, x, y);
 
     try {
-      return await fs.readFile(filePath);
+      return {
+        buffer: await fs.readFile(filePath),
+        cacheStatus: "hit"
+      };
     } catch {
       // cache miss — continue to fetch
     }
@@ -71,7 +79,7 @@ export function createTileCache({ cacheDir }: { cacheDir?: string } = {}): TileC
       return inflight.get(key)!;
     }
 
-    const promise = (async (): Promise<Buffer> => {
+    const promise = (async (): Promise<TileResult> => {
       const url = remoteUrl(provider, z, x, y);
       const response = await fetch(url, {
         headers: { "User-Agent": "MapAnim-TileCache/1.0" }
@@ -81,8 +89,13 @@ export function createTileCache({ cacheDir }: { cacheDir?: string } = {}): TileC
       }
       const buffer = Buffer.from(await response.arrayBuffer());
       await ensureDir(path.dirname(filePath));
-      await fs.writeFile(filePath, buffer);
-      return buffer;
+      const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+      await fs.writeFile(tempPath, buffer);
+      await fs.rename(tempPath, filePath);
+      return {
+        buffer,
+        cacheStatus: "miss"
+      };
     })();
 
     inflight.set(key, promise);
@@ -91,6 +104,11 @@ export function createTileCache({ cacheDir }: { cacheDir?: string } = {}): TileC
     } finally {
       inflight.delete(key);
     }
+  }
+
+  async function getTile(provider: string, z: number, x: number, y: number): Promise<Buffer> {
+    const result = await getTileResult(provider, z, x, y);
+    return result.buffer;
   }
 
   async function handleTileRequest(
@@ -108,12 +126,13 @@ export function createTileCache({ cacheDir }: { cacheDir?: string } = {}): TileC
     }
 
     try {
-      const tile = await getTile(provider, z, x, y);
+      const tile = await getTileResult(provider, z, x, y);
       response.writeHead(200, {
         "Content-Type": "image/png",
-        "Cache-Control": "public, max-age=86400"
+        "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400",
+        "X-MapAnim-Cache": tile.cacheStatus
       });
-      response.end(tile);
+      response.end(tile.buffer);
     } catch (error) {
       response.writeHead(502, { "Content-Type": "text/plain" });
       response.end((error as Error).message);

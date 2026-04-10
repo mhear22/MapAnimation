@@ -46,9 +46,13 @@ export function safeResolve(basePath: string, requestedPath: string): string {
 
 async function serveFile(response: http.ServerResponse, filePath: string): Promise<void> {
   const data = await fs.readFile(filePath);
-  response.writeHead(200, {
+  const headers: Record<string, string> = {
     "Content-Type": contentTypeFor(filePath)
-  });
+  };
+  if (path.basename(filePath) === "tile-cache-sw.js") {
+    headers["Cache-Control"] = "no-cache";
+  }
+  response.writeHead(200, headers);
   response.end(data);
 }
 
@@ -95,6 +99,10 @@ export function resolveRenderAssetPath(
     return path.join(webDir, "renderer.js");
   }
 
+  if (pathname === "/tile-cache-sw.js") {
+    return path.join(webDir, "tile-cache-sw.js");
+  }
+
   if (pathname.startsWith("/node_modules/")) {
     return safeResolve(rootDir, pathname);
   }
@@ -116,7 +124,7 @@ export function createRenderAssetHandler(options: CreateRenderAssetHandlerOption
     webDir,
     mountPath = "/",
     allowOutput = false,
-    tileCache = createTileCache()
+    tileCache = createTileCache({ cacheDir: path.join(rootDir, ".tile-cache") })
   } = options;
 
   return async function handleRenderAssetRequest(

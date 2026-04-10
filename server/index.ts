@@ -21,7 +21,7 @@ const webappDistDir = path.join(rootDir, "webapp", "dist");
 const isDev: boolean = process.env["MAPANIM_DEV"] === "1";
 const providerRegistry = createProviderRegistry();
 const presetStore = createPresetStore({ rootDir });
-const tileCache = createTileCache();
+const tileCache = createTileCache({ cacheDir: path.join(rootDir, ".tile-cache") });
 const sseClients = new Set<http.ServerResponse>();
 let baseUrl: string | null = null;
 
