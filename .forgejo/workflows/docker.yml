@@ -67,11 +67,18 @@ jobs:
           echo "registry=${REGISTRY}" >> "$GITHUB_OUTPUT"
           echo "image=${REGISTRY}/$owner/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
 
+      # The auto-injected Actions token can't write to the Forgejo package
+      # registry (docker login succeeds but the blob upload returns 401), so
+      # authenticate with a Personal Access Token that has package:write scope,
+      # stored as the repo/org secret REGISTRY_TOKEN. REGISTRY_USER defaults to
+      # the workflow actor when unset.
       - name: Log in to the registry
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
+          user="${{ secrets.REGISTRY_USER }}"
+          [ -n "$user" ] || user="${{ github.actor }}"
+          echo "${{ secrets.REGISTRY_TOKEN }}" \
             | docker login "${{ steps.image.outputs.registry }}" \
-                -u "${{ github.actor }}" --password-stdin
+                -u "$user" --password-stdin
 
       # Plain build + push. The host daemon's layer cache persists across runs,
       # so the heavy node+Chromium deps layer is reused when package*.json is
