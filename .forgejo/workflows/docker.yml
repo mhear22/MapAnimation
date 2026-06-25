@@ -5,9 +5,11 @@ name: Docker
 # also the CI gate (mirrors the GitHub release workflow).
 #
 # The image goes to this Forgejo instance's built-in container registry at
-# <instance-host>/<owner>/glidemap. Auth uses the token Forgejo injects into
-# every Actions run (secrets.GITHUB_TOKEN), which already has package write
-# scope for the repository owner — no extra secret to configure.
+# <instance-host>/<owner>/glidemap. Auth uses a dedicated access token stored as
+# the repo Actions secret REGISTRY_TOKEN (scope: write:package). The token
+# Forgejo auto-injects (secrets.GITHUB_TOKEN) authenticates `docker login` but is
+# NOT granted package *push* scope on this instance — even with
+# `permissions: packages: write` the blob upload 401s — so a real token is used.
 #
 # RUNNER REQUIREMENTS:
 #   * The job needs access to a Docker daemon. The runner must mount the host
@@ -23,12 +25,11 @@ on:
   push:
     branches: [main]
 
-# The auto-injected Actions token (secrets.GITHUB_TOKEN) is read-only for the
-# package registry unless the workflow asks for write — without this the push's
-# blob upload comes back 401 Unauthorized even though `docker login` succeeded.
+# Only checkout needs the auto token; the package push authenticates with
+# REGISTRY_TOKEN instead (see the header note on why secrets.GITHUB_TOKEN cannot
+# push to this instance's registry).
 permissions:
   contents: read
-  packages: write
 
 # Serialize runs so two quick pushes don't race on the :latest tag.
 concurrency:
@@ -69,9 +70,9 @@ jobs:
 
       - name: Log in to the registry
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
+          echo "${{ secrets.REGISTRY_TOKEN }}" \
             | docker login "${{ steps.image.outputs.registry }}" \
-                -u "${{ github.actor }}" --password-stdin
+                -u "${{ github.repository_owner }}" --password-stdin
 
       # Plain build + push. The host daemon's layer cache persists across runs,
       # so the heavy node+Chromium deps layer is reused when package*.json is
