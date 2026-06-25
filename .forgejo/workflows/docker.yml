@@ -23,6 +23,13 @@ on:
   push:
     branches: [main]
 
+# The auto-injected Actions token (secrets.GITHUB_TOKEN) is read-only for the
+# package registry unless the workflow asks for write — without this the push's
+# blob upload comes back 401 Unauthorized even though `docker login` succeeded.
+permissions:
+  contents: read
+  packages: write
+
 # Serialize runs so two quick pushes don't race on the :latest tag.
 concurrency:
   group: ${{ github.workflow }}
